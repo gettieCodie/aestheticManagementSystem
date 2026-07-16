@@ -1,0 +1,316 @@
+{
+  "system": "Luxi — Luxuriskin Aesthetic Clinic Management System",
+  "database": "Firebase Firestore",
+  "conventions": {
+    "ids": "Firestore auto-generated string document IDs unless docId is specified",
+    "timestamps": "Firestore Timestamp",
+    "denormalization": "Referenced documents store the source id AND copy display fields; copies are point-in-time snapshots and do not change if the source later changes",
+    "money": "stored as number (peso amount)"
+  },
+  "collections": {
+    "users": {
+      "description": "Staff and admin accounts (management app). Customer app is unauthenticated.",
+      "docId": "Firebase Auth uid",
+      "fields": {
+        "fullName": { "type": "string" },
+        "email": { "type": "string", "notes": "matches the Auth account" },
+        "role": { "type": "string", "enum": ["staff", "admin"], "notes": "owner = admin" },
+        "branchId": { "type": "string", "ref": "branches", "notes": "assigned branch; staff are locked to it" },
+        "isActive": { "type": "boolean" },
+        "createdAt": { "type": "timestamp" }
+      }
+    },
+    "branches": {
+      "description": "Clinic locations. Configured by admin.",
+      "fields": {
+        "name": { "type": "string" },
+        "address": { "type": "string" },
+        "phone": { "type": "string", "optional": true },
+        "capacity": { "type": "number", "notes": "concurrent appointment slots (~staff/rooms, e.g. 2)" },
+        "isActive": { "type": "boolean" }
+      }
+    },
+    "services": {
+      "description": "Bookable treatments. Configured by admin in POS Configuration.",
+      "fields": {
+        "name": { "type": "string" },
+        "category": { "type": "string" },
+        "price": { "type": "number", "notes": "list price" },
+        "durationMinutes": { "type": "number" },
+        "description": { "type": "string" },
+        "consumables": {
+          "type": "array",
+          "notes": "products auto-used per session; deducted from stock on completion",
+          "items": {
+            "productId": { "type": "string", "ref": "products" },
+            "productName": { "type": "string", "copied": true },
+            "quantity": { "type": "number" }
+          }
+        },
+        "isActive": { "type": "boolean" },
+        "createdAt": { "type": "timestamp" },
+        "updatedAt": { "type": "timestamp" }
+      }
+    },
+    "products": {
+      "description": "Retail and consumable inventory items. Per-branch quantities live in stock.",
+      "fields": {
+        "name": { "type": "string" },
+        "sku": { "type": "string", "notes": "e.g. SKU-SUN-050" },
+        "category": { "type": "string" },
+        "supplier": { "type": "string" },
+        "price": { "type": "number", "notes": "selling price" },
+        "cost": { "type": "number", "notes": "purchase cost" },
+        "unit": { "type": "string", "notes": "pcs, bottles, liters" },
+        "reorderLevel": { "type": "number", "notes": "low-stock threshold" },
+        "criticalLevel": { "type": "number", "notes": "below this = Critical" },
+        "isActive": { "type": "boolean" },
+        "createdAt": { "type": "timestamp" },
+        "updatedAt": { "type": "timestamp" }
+      },
+      "derived": {
+        "status": "In Stock / Low Stock / Critical / Out of Stock — from total stock vs reorderLevel & criticalLevel",
+        "totalInventoryValue": "sum(stock.quantity * product.cost)"
+      }
+    },
+    "customers": {
+      "description": "Client records. Matched to returning clients by phone. Maintained by staff; no customer login.",
+      "fields": {
+        "clientId": { "type": "string", "notes": "human code, e.g. LUX-2024-001" },
+        "fullName": { "type": "string" },
+        "email": { "type": "string" },
+        "phone": { "type": "string", "notes": "natural key for matching returning clients" },
+        "facebook": { "type": "string" },
+        "photoUrl": { "type": "string", "optional": true, "notes": "Firebase Storage URL" },
+        "memberSince": { "type": "timestamp" },
+        "totalVisits": { "type": "number", "optional": true, "notes": "rollup" },
+        "totalSpent": { "type": "number", "optional": true, "notes": "rollup" },
+        "noShowCount": { "type": "number", "notes": "powers no-show monitoring" },
+        "lastVisitAt": { "type": "timestamp", "optional": true },
+        "createdAt": { "type": "timestamp" }
+      }
+    },
+    "packages": {
+      "description": "A treatment package a client purchased at POS (promo or custom). Drives session progress and balance.",
+      "fields": {
+        "customerId": { "type": "string", "ref": "customers" },
+        "source": { "type": "string", "enum": ["promo", "custom"] },
+        "promoId": { "type": "string", "ref": "promoPackages", "optional": true },
+        "name": { "type": "string" },
+        "packageType": { "type": "string", "notes": "for custom packages" },
+        "totalSessions": { "type": "number" },
+        "completedSessions": { "type": "number", "notes": "starts at 0" },
+        "totalPrice": { "type": "number" },
+        "paidAmount": { "type": "number" },
+        "remainingBalance": { "type": "number", "notes": "totalPrice - paidAmount" },
+        "paymentStatus": { "type": "string", "enum": ["fullyPaid", "installment", "overdue"] },
+        "dueDate": { "type": "string", "format": "YYYY-MM-DD", "optional": true },
+        "sessionIntervalDays": { "type": "number", "notes": "days between sessions" },
+        "startDate": { "type": "string", "format": "YYYY-MM-DD" },
+        "branchId": { "type": "string", "ref": "branches" },
+        "createdByStaffId": { "type": "string", "ref": "users" },
+        "notes": { "type": "string", "optional": true },
+        "status": { "type": "string", "enum": ["active", "completed", "cancelled"] },
+        "createdAt": { "type": "timestamp" },
+        "updatedAt": { "type": "timestamp" }
+      }
+    },
+    "promoPackages": {
+      "description": "Admin-configured catalog of fixed-price packages shown at POS.",
+      "fields": {
+        "name": { "type": "string", "notes": "e.g. Get Slim Package" },
+        "sessionCount": { "type": "number" },
+        "fixedPrice": { "type": "number" },
+        "category": { "type": "string", "optional": true },
+        "isActive": { "type": "boolean" },
+        "createdAt": { "type": "timestamp" },
+        "updatedAt": { "type": "timestamp" }
+      }
+    },
+    "bookings": {
+      "description": "Appointment hub and the calendar. A walk-in appointment OR one auto-generated package session. Completed package bookings form the client's Session Timeline.",
+      "fields": {
+        "customerId": { "type": "string", "ref": "customers" },
+        "customerName": { "type": "string", "copied": true },
+        "serviceId": { "type": "string", "ref": "services" },
+        "serviceName": { "type": "string", "copied": true },
+        "servicePrice": { "type": "number", "copied": true, "notes": "snapshot at booking time" },
+        "branchId": { "type": "string", "ref": "branches" },
+        "branchName": { "type": "string", "copied": true },
+        "appointmentDate": { "type": "string", "format": "YYYY-MM-DD" },
+        "appointmentTime": { "type": "string", "format": "HH:mm" },
+        "startAt": { "type": "timestamp", "notes": "date+time combined, for conflict/overlap checks" },
+        "durationMinutes": { "type": "number", "copied": true, "notes": "end = startAt + this" },
+        "status": { "type": "string", "enum": ["pending", "confirmed", "completed", "cancelled", "no_show"] },
+        "assessedPrice": { "type": "number", "nullable": true, "notes": "final price after assessment" },
+        "assignedStaffId": { "type": "string", "ref": "users", "nullable": true },
+        "staffName": { "type": "string", "copied": true },
+        "packageId": { "type": "string", "ref": "packages", "optional": true },
+        "sessionNumber": { "type": "number", "optional": true },
+        "productsUsed": { "type": "array", "items": "string", "notes": "products applied during the session" },
+        "progressPhotos": { "type": "array", "items": "string", "notes": "Firebase Storage URLs, staff-only" },
+        "notes": { "type": "string", "optional": true },
+        "createdAt": { "type": "timestamp" },
+        "updatedAt": { "type": "timestamp" }
+      }
+    },
+    "sales": {
+      "description": "POS transactions — the rows in Sales History. Line items embedded as an array.",
+      "fields": {
+        "branchId": { "type": "string", "ref": "branches" },
+        "branchName": { "type": "string", "copied": true },
+        "staffId": { "type": "string", "ref": "users" },
+        "staffName": { "type": "string", "copied": true },
+        "customerId": { "type": "string", "ref": "customers", "optional": true },
+        "customerName": { "type": "string", "copied": true, "optional": true },
+        "packageId": { "type": "string", "ref": "packages", "optional": true },
+        "bookingId": { "type": "string", "ref": "bookings", "optional": true },
+        "items": {
+          "type": "array",
+          "items": {
+            "type": { "type": "string", "enum": ["service", "product"] },
+            "refId": { "type": "string", "notes": "serviceId or productId" },
+            "name": { "type": "string", "copied": true },
+            "quantity": { "type": "number" },
+            "unitPrice": { "type": "number", "copied": true },
+            "lineTotal": { "type": "number", "notes": "quantity * unitPrice" }
+          }
+        },
+        "subtotal": { "type": "number" },
+        "discount": { "type": "number", "notes": "defaults 0" },
+        "total": { "type": "number", "notes": "subtotal - discount" },
+        "paidAmount": { "type": "number" },
+        "balance": { "type": "number", "notes": "total - paidAmount" },
+        "paymentStatus": { "type": "string", "enum": ["fullyPaid", "installment", "overdue"] },
+        "paymentMethod": { "type": "string", "notes": "cash / card / gcash" },
+        "createdAt": { "type": "timestamp" }
+      }
+    },
+    "payments": {
+      "description": "Each individual payment against a package/sale — enables installments and Total Paid / Outstanding totals.",
+      "fields": {
+        "packageId": { "type": "string", "ref": "packages", "notes": "or saleId" },
+        "customerId": { "type": "string", "ref": "customers" },
+        "amount": { "type": "number" },
+        "paymentMethod": { "type": "string", "enum": ["cash", "gcash", "card"] },
+        "staffId": { "type": "string", "ref": "users" },
+        "branchId": { "type": "string", "ref": "branches" },
+        "createdAt": { "type": "timestamp", "notes": "payment date" }
+      }
+    },
+    "settings": {
+      "description": "Single global-config document edited in POS Configuration and synced to all branches.",
+      "docId": "global",
+      "fields": {
+        "promoDiscountRate": { "type": "number", "notes": "percent, e.g. 10" },
+        "paymentMethods": { "type": "array", "items": "string", "notes": "enabled methods, e.g. [cash, gcash, card]" },
+        "updatedAt": { "type": "timestamp" },
+        "updatedByStaffId": { "type": "string", "ref": "users" }
+      }
+    },
+    "stock": {
+      "description": "Current on-hand quantity of a product at one branch. Branch Allocation = a product's stock docs across branches.",
+      "docId": "{branchId}_{productId}",
+      "fields": {
+        "branchId": { "type": "string", "ref": "branches" },
+        "productId": { "type": "string", "ref": "products" },
+        "productName": { "type": "string", "copied": true },
+        "quantity": { "type": "number" },
+        "expirationDate": { "type": "string", "format": "YYYY-MM-DD", "optional": true },
+        "updatedAt": { "type": "timestamp" }
+      }
+    },
+    "stockMovements": {
+      "description": "Audit trail of every inventory change.",
+      "fields": {
+        "branchId": { "type": "string", "ref": "branches" },
+        "productId": { "type": "string", "ref": "products" },
+        "productName": { "type": "string", "copied": true },
+        "type": { "type": "string", "enum": ["restock", "sale", "consumable", "transfer", "adjustment"] },
+        "quantityChange": { "type": "number", "notes": "+ in, - out" },
+        "balanceAfter": { "type": "number" },
+        "fromBranchId": { "type": "string", "ref": "branches", "optional": true, "notes": "transfers" },
+        "toBranchId": { "type": "string", "ref": "branches", "optional": true, "notes": "transfers" },
+        "refId": { "type": "string", "optional": true, "notes": "related saleId / bookingId" },
+        "staffId": { "type": "string", "ref": "users" },
+        "createdAt": { "type": "timestamp" }
+      }
+    },
+    "summaries": {
+      "description": "Pre-aggregated daily rollups so the admin dashboard is fast. Export to BigQuery for real ML.",
+      "docId": "{branchId}_{YYYY-MM-DD}",
+      "fields": {
+        "branchId": { "type": "string", "ref": "branches" },
+        "date": { "type": "string", "format": "YYYY-MM-DD" },
+        "totalSales": { "type": "number" },
+        "transactionCount": { "type": "number" },
+        "servicesRevenue": { "type": "number" },
+        "productsRevenue": { "type": "number" },
+        "updatedAt": { "type": "timestamp" }
+      }
+    }
+  },
+  "relationships": [
+    "bookings -> customers, services, branches; optionally packages",
+    "packages -> customers, branches; optionally promoPackages",
+    "services -> products (via consumables)",
+    "sales -> branches, users; optionally customers, bookings, packages; items -> services/products",
+    "payments -> packages (or sales), customers, branches, users",
+    "stock -> branches, products",
+    "stockMovements -> branches, products; optionally sales/bookings",
+    "summaries -> branches",
+    "users -> branches"
+  ],
+  "roles": {
+    "customer": {
+      "auth": false,
+      "read": ["services", "branches"],
+      "create": ["customers", "bookings"]
+    },
+    "staff": {
+      "auth": true,
+      "branchLocked": true,
+      "readWrite": ["bookings", "customers", "packages", "payments", "sales", "stock", "stockMovements"],
+      "read": ["services", "products", "branches", "promoPackages", "settings"],
+      "notes": "read/write only where branchId equals their own branchId"
+    },
+    "admin": {
+      "auth": true,
+      "branchLocked": false,
+      "readWrite": "all collections",
+      "notes": "owner = admin; full cross-branch access"
+    }
+  },
+  "atomicOperations": {
+    "createPackage": [
+      "1 packages document",
+      "N bookings (one per session from startDate + sessionIntervalDays)",
+      "1 sales document (package + aftercare + payment)",
+      "1 payments entry (initial payment)",
+      "decrement stock + log stockMovements for each aftercare product",
+      "optional: update customer rollups and daily summaries"
+    ],
+    "completeSession": [
+      "set booking to completed; save productsUsed, notes, progressPhotos",
+      "increment package.completedSessions",
+      "decrement service consumables from stock + log stockMovements(consumable)"
+    ],
+    "recordPayment": [
+      "add payments entry",
+      "increase package/sale paidAmount; recompute remainingBalance + paymentStatus",
+      "optional: update daily summaries"
+    ],
+    "processSale": [
+      "create sales document + payments entry",
+      "for each product line item: decrement stock + log stockMovements(sale)",
+      "for each service line item: decrement consumables + log stockMovements(consumable)",
+      "optional: update summaries and customer.totalSpent"
+    ]
+  },
+  "automationRules": {
+    "conflictDetection": "Before creating a booking, count non-cancelled/non-no_show bookings whose [startAt, startAt+durationMinutes) overlaps the requested window at that branch; block if count >= branch.capacity. Once staff assigned, same check per assignedStaffId.",
+    "duplicateBookingWarning": "Match customer by phone; warn if they already have a booking for the same serviceId on the same day or overlapping time (soft stop).",
+    "noShowMonitoring": "Missed appointment set to status no_show; increments customer.noShowCount; list no_show bookings to flag repeat offenders.",
+    "inventoryDeductionPerTransaction": "Every POS sale atomically deducts stock for product line items and service consumables, logging stockMovements, so inventory never oversells."
+  }
+}
