@@ -1,0 +1,27 @@
+name: luxi_management
+description: "Luxi — staff & admin management app for Luxuriskin Aesthetic Clinic."
+publish_to: 'none'
+version: 1.0.0+1
+
+environment:
+  sdk: ^3.12.2
+
+dependencies:
+  flutter:
+    sdk: flutter
+  cupertino_icons: ^1.0.8
+
+  # State management (mock in-memory for now; Firebase drops in later).
+  provider: ^6.1.2
+  firebase_core: ^4.12.1
+  cloud_firestore: ^6.7.1
+  firebase_storage: ^13.4.5
+  image_picker: ^1.2.3
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^6.0.0
+
+flutter:
+  uses-material-design: true

@@ -1,0 +1,162 @@
+{
+  "_meta": {
+    "note": "Seed data for the Luxi Firestore schema (luxi_firestore_schema.json/.md). '_id' on each document is the intended Firestore docId — auto-generated ids for most collections, explicit composite ids for stock/summaries, and 'global' for settings, exactly as the schema specifies. All timestamp fields are ISO 8601 strings; convert with admin.firestore.Timestamp.fromDate(new Date(...)) when seeding.",
+    "totalRecords": 60
+  },
+
+  "branches": [
+    { "_id": "branch_01", "name": "Sta. Rosa, Laguna", "address": "Luxuriskin Aesthetic Clinic, National Highway, Sta. Rosa City, Laguna", "phone": "0917-100-0001", "capacity": 2, "isActive": true },
+    { "_id": "branch_02", "name": "Lipa City, Batangas", "address": "Luxuriskin Aesthetic Clinic, C.M. Recto Ave, Lipa City, Batangas", "phone": "0917-100-0002", "capacity": 2, "isActive": true },
+    { "_id": "branch_03", "name": "Batangas City, Batangas", "address": "Luxuriskin Aesthetic Clinic, P. Burgos St, Batangas City, Batangas", "phone": "0917-100-0003", "capacity": 3, "isActive": true },
+    { "_id": "branch_04", "name": "Angeles City, Pampanga", "address": "Luxuriskin Aesthetic Clinic, MacArthur Highway, Angeles City, Pampanga", "phone": "0917-100-0004", "capacity": 2, "isActive": true }
+  ],
+
+  "users": [
+    { "_id": "user_01", "fullName": "Patricia Lim", "email": "admin@luxuriskin.ph", "role": "admin", "branchId": "branch_01", "isActive": true, "createdAt": "2026-01-05T08:00:00Z" },
+    { "_id": "user_02", "fullName": "Angela Reyes", "email": "angela.reyes@luxuriskin.ph", "role": "staff", "branchId": "branch_01", "isActive": true, "createdAt": "2026-01-06T08:00:00Z" },
+    { "_id": "user_03", "fullName": "Carlo Villanueva", "email": "carlo.villanueva@luxuriskin.ph", "role": "staff", "branchId": "branch_02", "isActive": true, "createdAt": "2026-01-06T08:00:00Z" },
+    { "_id": "user_04", "fullName": "Diane Mercado", "email": "diane.mercado@luxuriskin.ph", "role": "staff", "branchId": "branch_03", "isActive": true, "createdAt": "2026-01-07T08:00:00Z" },
+    { "_id": "user_05", "fullName": "Michael Torres", "email": "michael.torres@luxuriskin.ph", "role": "staff", "branchId": "branch_04", "isActive": true, "createdAt": "2026-01-07T08:00:00Z" }
+  ],
+
+  "services": [
+    {
+      "_id": "svc_01", "name": "Signature Glow Facial", "category": "Facial", "price": 1800, "durationMinutes": 60,
+      "description": "Brightening facial treatment with vitamin C infusion.",
+      "consumables": [ { "productId": "product_01", "productName": "Vitamin C Serum 30ml", "quantity": 1 } ],
+      "isActive": true, "createdAt": "2026-01-10T08:00:00Z", "updatedAt": "2026-01-10T08:00:00Z"
+    },
+    {
+      "_id": "svc_02", "name": "Full Body Massage", "category": "Body", "price": 1500, "durationMinutes": 90,
+      "description": "Relaxing full body massage with hydrating serum finish.",
+      "consumables": [ { "productId": "product_05", "productName": "Hyaluronic Acid Serum", "quantity": 1 } ],
+      "isActive": true, "createdAt": "2026-01-10T08:00:00Z", "updatedAt": "2026-01-10T08:00:00Z"
+    },
+    {
+      "_id": "svc_03", "name": "Laser Hair Removal", "category": "Laser", "price": 2500, "durationMinutes": 45,
+      "description": "Diode laser hair removal, per session, per area.",
+      "consumables": [ { "productId": "product_03", "productName": "Post-Laser Soothing Gel", "quantity": 2 } ],
+      "isActive": true, "createdAt": "2026-01-11T08:00:00Z", "updatedAt": "2026-01-11T08:00:00Z"
+    },
+    {
+      "_id": "svc_04", "name": "Anti-Wrinkle Injections", "category": "Injectables", "price": 8000, "durationMinutes": 30,
+      "description": "Neuromodulator injections for fine lines and wrinkles.",
+      "consumables": [ { "productId": "product_03", "productName": "Post-Laser Soothing Gel", "quantity": 1 } ],
+      "isActive": true, "createdAt": "2026-01-12T08:00:00Z", "updatedAt": "2026-01-12T08:00:00Z"
+    },
+    {
+      "_id": "svc_05", "name": "Hydrafacial Treatment", "category": "Facial", "price": 2200, "durationMinutes": 50,
+      "description": "Deep-cleansing hydradermabrasion facial with SPF finish.",
+      "consumables": [
+        { "productId": "product_02", "productName": "Sunscreen SPF50 PA++++", "quantity": 1 },
+        { "productId": "product_01", "productName": "Vitamin C Serum 30ml", "quantity": 1 }
+      ],
+      "isActive": true, "createdAt": "2026-01-12T08:00:00Z", "updatedAt": "2026-01-12T08:00:00Z"
+    }
+  ],
+
+  "products": [
+    { "_id": "product_01", "name": "Vitamin C Serum 30ml", "sku": "SKU-VTC-030", "category": "Skincare", "supplier": "BeautyCorp Inc.", "price": 650, "cost": 400, "unit": "pcs", "reorderLevel": 10, "criticalLevel": 5, "isActive": true, "createdAt": "2026-01-08T08:00:00Z", "updatedAt": "2026-01-08T08:00:00Z" },
+    { "_id": "product_02", "name": "Sunscreen SPF50 PA++++", "sku": "SKU-SUN-050", "category": "Skincare", "supplier": "BeautyCorp Inc.", "price": 850, "cost": 500, "unit": "pcs", "reorderLevel": 15, "criticalLevel": 6, "isActive": true, "createdAt": "2026-01-08T08:00:00Z", "updatedAt": "2026-01-08T08:00:00Z" },
+    { "_id": "product_03", "name": "Post-Laser Soothing Gel", "sku": "SKU-PLS-100", "category": "Treatment", "supplier": "DermaSupply PH", "price": 950, "cost": 600, "unit": "bottles", "reorderLevel": 12, "criticalLevel": 5, "isActive": true, "createdAt": "2026-01-09T08:00:00Z", "updatedAt": "2026-01-09T08:00:00Z" },
+    { "_id": "product_04", "name": "Retinol Night Cream 30ml", "sku": "SKU-RET-030", "category": "Skincare", "supplier": "BeautyCorp Inc.", "price": 780, "cost": 480, "unit": "pcs", "reorderLevel": 10, "criticalLevel": 4, "isActive": true, "createdAt": "2026-01-09T08:00:00Z", "updatedAt": "2026-01-09T08:00:00Z" },
+    { "_id": "product_05", "name": "Hyaluronic Acid Serum", "sku": "SKU-HYA-030", "category": "Skincare", "supplier": "DermaSupply PH", "price": 720, "cost": 420, "unit": "pcs", "reorderLevel": 10, "criticalLevel": 4, "isActive": true, "createdAt": "2026-01-09T08:00:00Z", "updatedAt": "2026-01-09T08:00:00Z" }
+  ],
+
+  "customers": [
+    { "_id": "customer_01", "clientId": "LUX-2026-001", "fullName": "Maria Dela Cruz", "email": "maria1@gmail.com", "phone": "09963181386", "facebook": "MariaReyes75", "memberSince": "2026-02-01T00:00:00Z", "totalVisits": 3, "totalSpent": 8100, "noShowCount": 0, "lastVisitAt": "2026-04-26T09:00:00Z", "createdAt": "2026-02-01T08:00:00Z" },
+    { "_id": "customer_02", "clientId": "LUX-2026-002", "fullName": "Jose Santos", "email": "jose2@gmail.com", "phone": "09610846881", "facebook": "JoseBautista90", "memberSince": "2026-02-10T00:00:00Z", "totalVisits": 1, "totalSpent": 4200, "noShowCount": 0, "lastVisitAt": "2026-05-16T10:00:00Z", "createdAt": "2026-02-10T08:00:00Z" },
+    { "_id": "customer_03", "clientId": "LUX-2026-003", "fullName": "Ana Reyes", "email": "ana3@gmail.com", "phone": "09759233275", "facebook": "AnaGarcia33", "memberSince": "2026-02-15T00:00:00Z", "totalVisits": 4, "totalSpent": 7200, "noShowCount": 0, "lastVisitAt": "2026-05-10T11:00:00Z", "createdAt": "2026-02-15T08:00:00Z" },
+    { "_id": "customer_04", "clientId": "LUX-2026-004", "fullName": "Juan Mendoza", "email": "juan4@gmail.com", "phone": "09201064292", "facebook": "JuanTorres67", "memberSince": "2026-03-01T00:00:00Z", "totalVisits": 0, "totalSpent": 0, "noShowCount": 0, "createdAt": "2026-03-01T08:00:00Z" },
+    { "_id": "customer_05", "clientId": "LUX-2026-005", "fullName": "Liza Flores", "email": "liza5@gmail.com", "phone": "09425774624", "facebook": "LizaRamos28", "memberSince": "2026-03-05T00:00:00Z", "totalVisits": 1, "totalSpent": 2200, "noShowCount": 0, "lastVisitAt": "2026-06-13T13:00:00Z", "createdAt": "2026-03-05T08:00:00Z" },
+    { "_id": "customer_06", "clientId": "LUX-2026-006", "fullName": "Mark Villareal", "email": "mark6@gmail.com", "phone": "09178452213", "facebook": "MarkVillareal41", "memberSince": "2026-03-12T00:00:00Z", "totalVisits": 0, "totalSpent": 0, "noShowCount": 1, "createdAt": "2026-03-12T08:00:00Z" },
+    { "_id": "customer_07", "clientId": "LUX-2026-007", "fullName": "Grace Aquino", "email": "grace7@gmail.com", "phone": "09053391847", "facebook": "GraceAquino19", "memberSince": "2026-03-20T00:00:00Z", "totalVisits": 0, "totalSpent": 15000, "noShowCount": 0, "createdAt": "2026-03-20T08:00:00Z" },
+    { "_id": "customer_08", "clientId": "LUX-2026-008", "fullName": "Paolo Ramirez", "email": "paolo8@gmail.com", "phone": "09287719936", "facebook": "PaoloRamirez82", "memberSince": "2026-04-02T00:00:00Z", "totalVisits": 0, "totalSpent": 0, "noShowCount": 0, "createdAt": "2026-04-02T08:00:00Z" }
+  ],
+
+  "promoPackages": [
+    { "_id": "promo_01", "name": "Get Slim Package", "sessionCount": 6, "fixedPrice": 12000, "category": "Body", "isActive": true, "createdAt": "2026-01-15T08:00:00Z", "updatedAt": "2026-01-15T08:00:00Z" },
+    { "_id": "promo_02", "name": "Glow Up Facial Package", "sessionCount": 4, "fixedPrice": 6000, "category": "Facial", "isActive": true, "createdAt": "2026-01-15T08:00:00Z", "updatedAt": "2026-01-15T08:00:00Z" }
+  ],
+
+  "packages": [
+    { "_id": "package_01", "customerId": "customer_01", "source": "promo", "promoId": "promo_01", "name": "Get Slim Package", "totalSessions": 6, "completedSessions": 2, "totalPrice": 12000, "paidAmount": 6000, "remainingBalance": 6000, "paymentStatus": "installment", "dueDate": "2026-08-01", "sessionIntervalDays": 7, "startDate": "2026-04-26", "branchId": "branch_01", "createdByStaffId": "user_02", "status": "active", "createdAt": "2026-04-26T09:00:00Z", "updatedAt": "2026-06-14T09:00:00Z" },
+    { "_id": "package_02", "customerId": "customer_03", "source": "custom", "packageType": "Facial", "name": "Custom Facial Rejuvenation", "totalSessions": 4, "completedSessions": 4, "totalPrice": 6000, "paidAmount": 6000, "remainingBalance": 0, "paymentStatus": "fullyPaid", "sessionIntervalDays": 14, "startDate": "2026-02-18", "branchId": "branch_03", "createdByStaffId": "user_04", "status": "completed", "createdAt": "2026-02-18T10:00:00Z", "updatedAt": "2026-05-10T11:00:00Z" },
+    { "_id": "package_03", "customerId": "customer_05", "source": "promo", "promoId": "promo_02", "name": "Glow Up Facial Package", "totalSessions": 4, "completedSessions": 1, "totalPrice": 6000, "paidAmount": 1500, "remainingBalance": 4500, "paymentStatus": "installment", "dueDate": "2026-08-15", "sessionIntervalDays": 14, "startDate": "2026-06-13", "branchId": "branch_01", "createdByStaffId": "user_02", "status": "active", "createdAt": "2026-06-13T13:00:00Z", "updatedAt": "2026-06-13T13:00:00Z" },
+    { "_id": "package_04", "customerId": "customer_07", "source": "custom", "packageType": "Laser", "name": "Full Body Laser Package", "totalSessions": 6, "completedSessions": 0, "totalPrice": 15000, "paidAmount": 15000, "remainingBalance": 0, "paymentStatus": "fullyPaid", "sessionIntervalDays": 30, "startDate": "2026-07-20", "branchId": "branch_03", "createdByStaffId": "user_04", "notes": "Client requested full payment upfront for discount.", "status": "active", "createdAt": "2026-06-25T14:00:00Z", "updatedAt": "2026-06-25T14:00:00Z" }
+  ],
+
+  "bookings": [
+    { "_id": "booking_01", "customerId": "customer_01", "customerName": "Maria Dela Cruz", "serviceId": "svc_01", "serviceName": "Signature Glow Facial", "servicePrice": 1800, "branchId": "branch_01", "branchName": "Sta. Rosa, Laguna", "appointmentDate": "2026-04-26", "appointmentTime": "09:00", "startAt": "2026-04-26T09:00:00Z", "durationMinutes": 60, "status": "completed", "assessedPrice": 1800, "assignedStaffId": "user_02", "staffName": "Angela Reyes", "packageId": "package_01", "sessionNumber": 1, "productsUsed": ["Vitamin C Serum 30ml"], "progressPhotos": [], "createdAt": "2026-04-20T08:00:00Z", "updatedAt": "2026-04-26T10:00:00Z" },
+    { "_id": "booking_02", "customerId": "customer_02", "customerName": "Jose Santos", "serviceId": "svc_03", "serviceName": "Laser Hair Removal", "servicePrice": 2500, "branchId": "branch_02", "branchName": "Lipa City, Batangas", "appointmentDate": "2026-05-16", "appointmentTime": "10:00", "startAt": "2026-05-16T10:00:00Z", "durationMinutes": 45, "status": "confirmed", "assessedPrice": null, "assignedStaffId": "user_03", "staffName": "Carlo Villanueva", "productsUsed": [], "progressPhotos": [], "createdAt": "2026-05-10T08:00:00Z", "updatedAt": "2026-05-10T08:00:00Z" },
+    { "_id": "booking_03", "customerId": "customer_03", "customerName": "Ana Reyes", "serviceId": "svc_01", "serviceName": "Signature Glow Facial", "servicePrice": 1800, "branchId": "branch_03", "branchName": "Batangas City, Batangas", "appointmentDate": "2026-05-10", "appointmentTime": "11:00", "startAt": "2026-05-10T11:00:00Z", "durationMinutes": 60, "status": "completed", "assessedPrice": 1800, "assignedStaffId": "user_04", "staffName": "Diane Mercado", "packageId": "package_02", "sessionNumber": 4, "productsUsed": ["Vitamin C Serum 30ml"], "progressPhotos": [], "notes": "Final session of the package — client very satisfied with results.", "createdAt": "2026-04-26T08:00:00Z", "updatedAt": "2026-05-10T12:00:00Z" },
+    { "_id": "booking_04", "customerId": "customer_04", "customerName": "Juan Mendoza", "serviceId": "svc_02", "serviceName": "Full Body Massage", "servicePrice": 1500, "branchId": "branch_04", "branchName": "Angeles City, Pampanga", "appointmentDate": "2026-07-20", "appointmentTime": "14:00", "startAt": "2026-07-20T14:00:00Z", "durationMinutes": 90, "status": "pending", "assessedPrice": null, "assignedStaffId": null, "staffName": "", "productsUsed": [], "progressPhotos": [], "createdAt": "2026-07-15T08:00:00Z", "updatedAt": "2026-07-15T08:00:00Z" },
+    { "_id": "booking_05", "customerId": "customer_05", "customerName": "Liza Flores", "serviceId": "svc_05", "serviceName": "Hydrafacial Treatment", "servicePrice": 2200, "branchId": "branch_01", "branchName": "Sta. Rosa, Laguna", "appointmentDate": "2026-06-13", "appointmentTime": "13:00", "startAt": "2026-06-13T13:00:00Z", "durationMinutes": 50, "status": "completed", "assessedPrice": 2200, "assignedStaffId": "user_02", "staffName": "Angela Reyes", "packageId": "package_03", "sessionNumber": 1, "productsUsed": ["Sunscreen SPF50 PA++++", "Vitamin C Serum 30ml"], "progressPhotos": [], "createdAt": "2026-06-08T08:00:00Z", "updatedAt": "2026-06-13T14:00:00Z" },
+    { "_id": "booking_06", "customerId": "customer_06", "customerName": "Mark Villareal", "serviceId": "svc_04", "serviceName": "Anti-Wrinkle Injections", "servicePrice": 8000, "branchId": "branch_02", "branchName": "Lipa City, Batangas", "appointmentDate": "2026-06-20", "appointmentTime": "15:00", "startAt": "2026-06-20T15:00:00Z", "durationMinutes": 30, "status": "no_show", "assessedPrice": null, "assignedStaffId": "user_03", "staffName": "Carlo Villanueva", "productsUsed": [], "progressPhotos": [], "createdAt": "2026-06-15T08:00:00Z", "updatedAt": "2026-06-20T15:30:00Z" }
+  ],
+
+  "sales": [
+    {
+      "_id": "sale_01", "branchId": "branch_01", "branchName": "Sta. Rosa, Laguna", "staffId": "user_02", "staffName": "Angela Reyes",
+      "customerId": "customer_01", "customerName": "Maria Dela Cruz", "packageId": "package_01",
+      "items": [
+        { "type": "service", "refId": "svc_01", "name": "Signature Glow Facial", "quantity": 1, "unitPrice": 1800, "lineTotal": 1800 },
+        { "type": "product", "refId": "product_05", "name": "Hyaluronic Acid Serum", "quantity": 1, "unitPrice": 720, "lineTotal": 720 }
+      ],
+      "subtotal": 2520, "discount": 0, "total": 2520, "paidAmount": 2520, "balance": 0, "paymentStatus": "fullyPaid", "paymentMethod": "gcash", "createdAt": "2026-04-26T09:15:00Z"
+    },
+    {
+      "_id": "sale_02", "branchId": "branch_03", "branchName": "Batangas City, Batangas", "staffId": "user_04", "staffName": "Diane Mercado",
+      "customerId": "customer_03", "customerName": "Ana Reyes", "packageId": "package_02",
+      "items": [ { "type": "service", "refId": "svc_01", "name": "Signature Glow Facial", "quantity": 1, "unitPrice": 1800, "lineTotal": 1800 } ],
+      "subtotal": 1800, "discount": 0, "total": 1800, "paidAmount": 1800, "balance": 0, "paymentStatus": "fullyPaid", "paymentMethod": "cash", "createdAt": "2026-05-10T11:15:00Z"
+    },
+    {
+      "_id": "sale_03", "branchId": "branch_02", "branchName": "Lipa City, Batangas", "staffId": "user_03", "staffName": "Carlo Villanueva",
+      "customerId": "customer_02", "customerName": "Jose Santos", "bookingId": "booking_02",
+      "items": [
+        { "type": "service", "refId": "svc_03", "name": "Laser Hair Removal", "quantity": 1, "unitPrice": 2500, "lineTotal": 2500 },
+        { "type": "product", "refId": "product_03", "name": "Post-Laser Soothing Gel", "quantity": 2, "unitPrice": 950, "lineTotal": 1900 }
+      ],
+      "subtotal": 4400, "discount": 200, "total": 4200, "paidAmount": 2000, "balance": 2200, "paymentStatus": "installment", "paymentMethod": "gcash", "createdAt": "2026-05-16T10:20:00Z"
+    },
+    {
+      "_id": "sale_04", "branchId": "branch_01", "branchName": "Sta. Rosa, Laguna", "staffId": "user_02", "staffName": "Angela Reyes",
+      "customerId": "customer_05", "customerName": "Liza Flores", "packageId": "package_03",
+      "items": [ { "type": "service", "refId": "svc_05", "name": "Hydrafacial Treatment", "quantity": 1, "unitPrice": 2200, "lineTotal": 2200 } ],
+      "subtotal": 2200, "discount": 0, "total": 2200, "paidAmount": 1500, "balance": 700, "paymentStatus": "installment", "paymentMethod": "card", "createdAt": "2026-06-13T13:15:00Z"
+    }
+  ],
+
+  "payments": [
+    { "_id": "payment_01", "packageId": "package_01", "customerId": "customer_01", "amount": 2520, "paymentMethod": "gcash", "staffId": "user_02", "branchId": "branch_01", "createdAt": "2026-04-26T09:15:00Z" },
+    { "_id": "payment_02", "packageId": "package_01", "customerId": "customer_01", "amount": 3480, "paymentMethod": "cash", "staffId": "user_02", "branchId": "branch_01", "createdAt": "2026-06-14T09:00:00Z" },
+    { "_id": "payment_03", "packageId": "sale_03", "customerId": "customer_02", "amount": 2000, "paymentMethod": "gcash", "staffId": "user_03", "branchId": "branch_02", "createdAt": "2026-05-16T10:20:00Z" },
+    { "_id": "payment_04", "packageId": "package_03", "customerId": "customer_05", "amount": 1500, "paymentMethod": "card", "staffId": "user_02", "branchId": "branch_01", "createdAt": "2026-06-13T13:15:00Z" }
+  ],
+
+  "settings": [
+    { "_id": "global", "promoDiscountRate": 10, "paymentMethods": ["cash", "gcash", "card"], "updatedAt": "2026-01-15T08:00:00Z", "updatedByStaffId": "user_01" }
+  ],
+
+  "stock": [
+    { "_id": "branch_01_product_01", "branchId": "branch_01", "productId": "product_01", "productName": "Vitamin C Serum 30ml", "quantity": 19, "updatedAt": "2026-04-26T10:00:00Z" },
+    { "_id": "branch_01_product_02", "branchId": "branch_01", "productId": "product_02", "productName": "Sunscreen SPF50 PA++++", "quantity": 40, "updatedAt": "2026-06-13T14:00:00Z" },
+    { "_id": "branch_01_product_05", "branchId": "branch_01", "productId": "product_05", "productName": "Hyaluronic Acid Serum", "quantity": 44, "updatedAt": "2026-04-26T09:15:00Z" },
+    { "_id": "branch_02_product_03", "branchId": "branch_02", "productId": "product_03", "productName": "Post-Laser Soothing Gel", "quantity": 48, "updatedAt": "2026-05-16T10:20:00Z" },
+    { "_id": "branch_03_product_01", "branchId": "branch_03", "productId": "product_01", "productName": "Vitamin C Serum 30ml", "quantity": 19, "updatedAt": "2026-05-10T12:00:00Z" },
+    { "_id": "branch_04_product_04", "branchId": "branch_04", "productId": "product_04", "productName": "Retinol Night Cream 30ml", "quantity": 35, "updatedAt": "2026-01-09T08:00:00Z" }
+  ],
+
+  "stockMovements": [
+    { "_id": "stockmove_01", "branchId": "branch_01", "productId": "product_01", "productName": "Vitamin C Serum 30ml", "type": "consumable", "quantityChange": -1, "balanceAfter": 19, "refId": "booking_01", "staffId": "user_02", "createdAt": "2026-04-26T10:00:00Z" },
+    { "_id": "stockmove_02", "branchId": "branch_01", "productId": "product_05", "productName": "Hyaluronic Acid Serum", "type": "sale", "quantityChange": -1, "balanceAfter": 44, "refId": "sale_01", "staffId": "user_02", "createdAt": "2026-04-26T09:15:00Z" },
+    { "_id": "stockmove_03", "branchId": "branch_03", "productId": "product_01", "productName": "Vitamin C Serum 30ml", "type": "consumable", "quantityChange": -1, "balanceAfter": 19, "refId": "booking_03", "staffId": "user_04", "createdAt": "2026-05-10T12:00:00Z" },
+    { "_id": "stockmove_04", "branchId": "branch_02", "productId": "product_03", "productName": "Post-Laser Soothing Gel", "type": "sale", "quantityChange": -2, "balanceAfter": 48, "refId": "sale_03", "staffId": "user_03", "createdAt": "2026-05-16T10:20:00Z" }
+  ],
+
+  "summaries": [
+    { "_id": "branch_01_2026-04-26", "branchId": "branch_01", "date": "2026-04-26", "totalSales": 2520, "transactionCount": 1, "servicesRevenue": 1800, "productsRevenue": 720, "updatedAt": "2026-04-26T09:15:00Z" },
+    { "_id": "branch_03_2026-05-10", "branchId": "branch_03", "date": "2026-05-10", "totalSales": 1800, "transactionCount": 1, "servicesRevenue": 1800, "productsRevenue": 0, "updatedAt": "2026-05-10T11:15:00Z" }
+  ]
+}
