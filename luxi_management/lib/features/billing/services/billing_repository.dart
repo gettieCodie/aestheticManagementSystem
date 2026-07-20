@@ -20,12 +20,14 @@ class BillingRepository {
 
   static const Map<PaymentPlan, String> _planOut = {
     PaymentPlan.full: 'full',
-    PaymentPlan.installment: 'installment',
     PaymentPlan.perSession: 'perSession',
-    PaymentPlan.billLater: 'billLater',
   };
   static final Map<String, PaymentPlan> _planIn = {
     for (final e in _planOut.entries) e.value: e.key,
+    // Legacy values from before Installment/Bill Later were retired — old
+    // sales docs still carrying them read back as Full Payment.
+    'installment': PaymentPlan.full,
+    'billLater': PaymentPlan.full,
   };
 
   static const Map<PaymentMethod, String> _methodOut = {

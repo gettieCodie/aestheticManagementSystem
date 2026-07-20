@@ -56,6 +56,13 @@ class _SalesHistoryPageState extends State<SalesHistoryPage> {
     final start = page * _pageSize;
     final visible = filtered.skip(start).take(_pageSize).toList();
 
+    // KPIs reflect the current filters, not the whole ledger — voided
+    // invoices are excluded the same way BillingStore's own totals are.
+    final billable = filtered.where((i) => !i.voided);
+    final filteredRevenue = billable.fold<double>(0, (s, i) => s + i.total);
+    final filteredCollected = billable.fold<double>(0, (s, i) => s + i.amountPaid);
+    final filteredOutstanding = billable.fold<double>(0, (s, i) => s + i.balance);
+
     return AdminPageScaffold(
       title: 'Sales & Reports',
       subtitle: 'Invoices, balances, and payment collection',
@@ -63,24 +70,24 @@ class _SalesHistoryPageState extends State<SalesHistoryPage> {
         StatRow(cards: [
           StatCard(
             label: 'Total Revenue (billed)',
-            value: Formatters.peso(store.totalRevenue),
+            value: Formatters.peso(filteredRevenue),
             icon: Icons.attach_money_rounded,
           ),
           StatCard(
             label: 'Collected',
-            value: Formatters.peso(store.totalCollected),
+            value: Formatters.peso(filteredCollected),
             icon: Icons.payments_rounded,
             accent: const Color(0xFF3E9E6E),
           ),
           StatCard(
             label: 'Outstanding',
-            value: Formatters.peso(store.outstanding),
+            value: Formatters.peso(filteredOutstanding),
             icon: Icons.error_outline_rounded,
             accent: const Color(0xFFE05252),
           ),
           StatCard(
             label: 'Invoices',
-            value: '${store.invoices.length}',
+            value: '${filtered.length}',
             icon: Icons.receipt_long_rounded,
           ),
         ]),

@@ -23,7 +23,7 @@ enum _Mode { newSale, payments }
 
 enum _SaleType { package, service }
 
-enum _Plan { full, installment, perSession, billLater }
+enum _Plan { full, perSession }
 
 /// POS — a clean, cart-style checkout. Creates an Invoice, then records a
 /// Payment. Packages, billing and payments stay distinct under the hood.
@@ -50,7 +50,6 @@ class _PosPageState extends State<PosPage> {
   final _customSessions = TextEditingController(text: '6');
   final _interval = TextEditingController(text: '7');
   final _discountPct = TextEditingController(text: '0');
-  final _installment = TextEditingController();
   final _reference = TextEditingController();
   final _received = TextEditingController();
   DateTime _startDate = DateTime.now();
@@ -97,7 +96,7 @@ class _PosPageState extends State<PosPage> {
   void dispose() {
     for (final c in [
       _customType, _customPrice, _customSessions, _interval, _discountPct,
-      _installment, _reference, _received
+      _reference, _received
     ]) {
       c.dispose();
     }
@@ -146,12 +145,8 @@ class _PosPageState extends State<PosPage> {
     switch (_plan) {
       case _Plan.full:
         return total;
-      case _Plan.installment:
-        return (double.tryParse(_installment.text) ?? 0).clamp(0, total).toDouble();
       case _Plan.perSession:
         return _sessions > 0 ? (_baseAmount / _sessions) : 0;
-      case _Plan.billLater:
-        return 0;
     }
   }
 
@@ -780,26 +775,12 @@ class _PosPageState extends State<PosPage> {
           Text('How is the client paying?',
               style: TextStyle(fontWeight: FontWeight.w700, color: scheme.onSurface)),
           const SizedBox(height: 10),
-          _planOption(_Plan.full, Icons.check_circle_rounded, 'Pay in full',
+          _planOption(_Plan.full, Icons.check_circle_rounded, 'Full Payment',
               'Settle the entire amount now', Formatters.peso(total)),
-          _planOption(_Plan.installment, Icons.schedule_rounded, 'Installment',
-              'Pay part now, the rest later', null),
           if (_saleType == _SaleType.package)
-            _planOption(_Plan.perSession, Icons.confirmation_number_rounded, 'Per session',
+            _planOption(_Plan.perSession, Icons.confirmation_number_rounded, 'Session Payment',
                 'Pay one session at a time',
                 _sessions > 0 ? Formatters.peso(_baseAmount / _sessions) : null),
-          _planOption(_Plan.billLater, Icons.description_outlined, 'Bill later',
-              'Create the invoice, collect later', null),
-          if (_plan == _Plan.installment) ...[
-            const SizedBox(height: 6),
-            TextField(
-              controller: _installment,
-              decoration: const InputDecoration(labelText: 'Amount paying now (₱)'),
-              keyboardType: TextInputType.number,
-              inputFormatters: [FilteringTextInputFormatter.digitsOnly],
-              onChanged: (_) => setState(() {}),
-            ),
-          ],
           if (payingNow > 0) _paymentDetails(payingNow),
           const SizedBox(height: 12),
           _row(context, 'Paying now', Formatters.peso(payingNow), color: scheme.primary, bold: true),
@@ -1042,14 +1023,8 @@ class _PosPageState extends State<PosPage> {
       staffName: staffName,
       items: items,
       discount: subtotal * discountPct / 100,
-      plan: _plan == _Plan.full
-          ? PaymentPlan.full
-          : _plan == _Plan.installment
-              ? PaymentPlan.installment
-              : _plan == _Plan.perSession
-                  ? PaymentPlan.perSession
-                  : PaymentPlan.billLater,
-      dueDate: _plan == _Plan.installment || _plan == _Plan.perSession
+      plan: _plan == _Plan.full ? PaymentPlan.full : PaymentPlan.perSession,
+      dueDate: _plan == _Plan.perSession
           ? DateTime.now().add(const Duration(days: 30))
           : null,
       appointmentDate: _appointmentDate,
@@ -1092,6 +1067,13 @@ class _PosPageState extends State<PosPage> {
     final paidTotal = payingNow.clamp(0, total);
     final balance = (total - paidTotal).clamp(0, double.infinity);
 
+    // Session Payment settles one session per payment — session 1 is paid at
+    // checkout, so the next due date is the second scheduled session.
+    final sessionDates = _sessionDates;
+    final nextPaymentDate = _plan == _Plan.perSession && sessionDates.length > 1
+        ? sessionDates[1]
+        : null;
+
     showDialog<void>(
       context: context,
       builder: (_) => AlertDialog(
@@ -1124,6 +1106,11 @@ class _PosPageState extends State<PosPage> {
             ],
             Text('Balance ${Formatters.peso(balance.toDouble())}',
                 style: TextStyle(color: Theme.of(context).colorScheme.error)),
+            if (nextPaymentDate != null)
+              Text('Next payment due ${Formatters.date(nextPaymentDate)}',
+                  style: TextStyle(
+                      color: Theme.of(context).colorScheme.primary,
+                      fontWeight: FontWeight.w600)),
           ],
         ),
         actions: [
@@ -1139,7 +1126,6 @@ class _PosPageState extends State<PosPage> {
       _appointmentDate = null;
       _appointmentTime = null;
       _aftercare.clear();
-      _installment.clear();
       _customType.clear();
       _customPrice.clear();
       _discountPct.text = '0';
@@ -1170,9 +1156,32 @@ class _PosPageState extends State<PosPage> {
     );
   }
 
+  /// The package this invoice bills, if any — matched by `invoiceId` on the
+  /// customer's packages rather than a stored `packageId` on the invoice, so
+  /// it works for packages created either at checkout or via "Complete
+  /// Treatment Record".
+  TreatmentPackage? _packageFor(StaffStore staff, Invoice inv) {
+    final customer = staff.customerById(inv.customerId);
+    if (customer == null) return null;
+    for (final p in customer.packages) {
+      if (p.invoiceId == inv.id) return p;
+    }
+    return null;
+  }
+
   Widget _openInvoiceRow(BuildContext context, Invoice inv) {
     final scheme = Theme.of(context).colorScheme;
     final isMobile = Responsive.isMobile(context);
+    final staff = context.watch<StaffStore>();
+    final billing = context.watch<BillingStore>();
+
+    // Session Payment invoices settle one session per payment — the next
+    // unpaid session is simply how many payments have landed so far + 1.
+    final package =
+        inv.plan == PaymentPlan.perSession ? _packageFor(staff, inv) : null;
+    final nextSession = package == null
+        ? null
+        : (billing.paymentsFor(inv.id).length + 1).clamp(1, package.totalSessions);
 
     final identity = Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -1185,6 +1194,13 @@ class _PosPageState extends State<PosPage> {
             '${inv.id} · Total ${Formatters.peso(inv.total)} · '
             'Paid ${Formatters.peso(inv.amountPaid)}',
             style: TextStyle(fontSize: 12, color: scheme.onSurfaceVariant)),
+        if (nextSession != null)
+          Padding(
+            padding: const EdgeInsets.only(top: 2),
+            child: Text('Next: Session $nextSession of ${package!.totalSessions}',
+                style: TextStyle(
+                    fontSize: 12, fontWeight: FontWeight.w600, color: scheme.primary)),
+          ),
       ],
     );
 

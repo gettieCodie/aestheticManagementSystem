@@ -148,6 +148,14 @@ class AppointmentsRepository {
   Future<void> logContact(String id) =>
       _update(id, {'lastContactedAt': FieldValue.serverTimestamp()});
 
+  /// Backfills a walk-in booking's `customerId` once it's been matched to a
+  /// (possibly just-created) customer record — without this, a walk-in's
+  /// completed session never attributes back to that customer, so their
+  /// session history looks empty even though they have a balance/sale on
+  /// record.
+  Future<void> setCustomerId(String id, String customerId) =>
+      _update(id, {'customerId': customerId});
+
   Future<void> cancel(String id, String reason) => _update(id, {
         'status': _statusOut[AppointmentStatus.cancelled],
         'cancelReason': reason,

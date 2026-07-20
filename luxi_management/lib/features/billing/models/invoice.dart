@@ -21,11 +21,11 @@ enum PaymentMethod {
 }
 
 /// How the client intends to settle the invoice (informational + UI hint).
+/// Installment and Bill Later were retired — every sale is either paid in
+/// full now or paid one package session at a time.
 enum PaymentPlan {
-  full('Paid in full'),
-  installment('Installment'),
-  perSession('Per session'),
-  billLater('Bill later');
+  full('Full Payment'),
+  perSession('Session Payment');
 
   const PaymentPlan(this.label);
   final String label;

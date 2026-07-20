@@ -5,7 +5,9 @@ import 'package:provider/provider.dart';
 import '../../../../core/constants/app_spacing.dart';
 import '../../../../core/utils/formatters.dart';
 import '../../../../core/utils/responsive.dart';
+import '../../../auth/state/auth_controller.dart';
 import '../../models/product.dart';
+import '../../models/stock_movement.dart';
 import '../../services/products_repository.dart';
 import '../../state/admin_store.dart';
 import '../widgets/section_card.dart';
@@ -123,6 +125,16 @@ class _InventoryPageState extends State<InventoryPage> {
     final all = store.products;
     final products = _apply(all);
 
+    // KPIs track the filtered set, not the whole catalog — same per-product
+    // formulas AdminStore uses for its unfiltered totals.
+    final filteredValue = products.fold<double>(0, (sum, p) => sum + p.inventoryValue);
+    final filteredLowStock =
+        products.where((p) => p.status == InventoryStatus.lowStock).length;
+    final filteredCritical =
+        products.where((p) => p.status == InventoryStatus.critical).length;
+    final filteredOutOfStock =
+        products.where((p) => p.status == InventoryStatus.outOfStock).length;
+
     return AdminPageScaffold(
       title: 'Inventory Management',
       subtitle: 'Multi-branch inventory tracking',
@@ -130,24 +142,24 @@ class _InventoryPageState extends State<InventoryPage> {
         StatRow(cards: [
           StatCard(
             label: 'Total Inventory Value',
-            value: Formatters.peso(store.totalInventoryValue),
+            value: Formatters.peso(filteredValue),
             icon: Icons.inventory_2_rounded,
           ),
           StatCard(
             label: 'Low Stock Items',
-            value: '${store.lowStockCount}',
+            value: '$filteredLowStock',
             icon: Icons.warning_amber_rounded,
             accent: AppColorsRef.warning,
           ),
           StatCard(
             label: 'Critical Stock',
-            value: '${store.criticalCount}',
+            value: '$filteredCritical',
             icon: Icons.trending_down_rounded,
             accent: AppColorsRef.error,
           ),
           StatCard(
             label: 'Out of Stock',
-            value: '${store.outOfStockCount}',
+            value: '$filteredOutOfStock',
             icon: Icons.error_outline_rounded,
             accent: AppColorsRef.error,
           ),
@@ -191,6 +203,7 @@ class _InventoryPageState extends State<InventoryPage> {
                       DataColumn(label: Text('Branch Allocation')),
                       DataColumn(label: Text('Expiry')),
                       DataColumn(label: Text('Status')),
+                      DataColumn(label: Text('Actions')),
                     ],
                     rows: [for (final p in products) _row(context, p)],
                   ),
@@ -399,6 +412,24 @@ class _InventoryPageState extends State<InventoryPage> {
               ),
             )),
       DataCell(_statusBadge(p.status)),
+      DataCell(Row(children: [
+        IconButton(
+          tooltip: 'Edit product',
+          icon: const Icon(Icons.edit_outlined, size: 18),
+          onPressed: () => showDialog<void>(
+            context: context,
+            builder: (_) => _AddProductDialog(existing: p),
+          ),
+        ),
+        IconButton(
+          tooltip: 'Adjust stock',
+          icon: const Icon(Icons.inventory_2_outlined, size: 18),
+          onPressed: () => showDialog<void>(
+            context: context,
+            builder: (_) => _AdjustStockDialog(product: p),
+          ),
+        ),
+      ])),
     ]);
   }
 
@@ -435,28 +466,39 @@ abstract final class AppColorsRef {
 }
 
 class _AddProductDialog extends StatefulWidget {
-  const _AddProductDialog();
+  const _AddProductDialog({this.existing});
+
+  /// When set, the dialog edits this product in place instead of creating a
+  /// new one — the opening-branch/quantity fields are hidden since stock
+  /// changes go through Adjust Stock instead.
+  final Product? existing;
 
   @override
   State<_AddProductDialog> createState() => _AddProductDialogState();
 }
 
 class _AddProductDialogState extends State<_AddProductDialog> {
+  bool get _isEdit => widget.existing != null;
+
   final _formKey = GlobalKey<FormState>();
-  final _name = TextEditingController();
-  final _price = TextEditingController();
-  final _cost = TextEditingController();
-  final _reorder = TextEditingController(text: '10');
-  final _critical = TextEditingController(text: '5');
+  late final _name = TextEditingController(text: widget.existing?.name ?? '');
+  late final _price =
+      TextEditingController(text: widget.existing == null ? '' : '${widget.existing!.price}');
+  late final _cost =
+      TextEditingController(text: widget.existing == null ? '' : '${widget.existing!.cost}');
+  late final _reorder = TextEditingController(
+      text: widget.existing == null ? '10' : '${widget.existing!.reorderLevel}');
+  late final _critical = TextEditingController(
+      text: widget.existing == null ? '5' : '${widget.existing!.criticalLevel}');
   final _openingQty = TextEditingController(text: '0');
 
   // Picked from dropdowns (with "＋ Add new…" to create an option on the fly).
-  String? _category;
-  String? _brand;
-  String? _supplier;
-  String _unit = 'pcs';
+  late String? _category = widget.existing?.category;
+  late String? _brand = widget.existing?.brand;
+  late String? _supplier = widget.existing?.supplier;
+  late String _unit = widget.existing?.unit ?? 'pcs';
   String _branch = kBranches.first;
-  DateTime? _expiry;
+  late DateTime? _expiry = widget.existing?.expiryDate;
   bool _saving = false;
 
   static const List<String> _baseUnits = [
@@ -520,6 +562,25 @@ class _AddProductDialogState extends State<_AddProductDialog> {
     final messenger = ScaffoldMessenger.of(context);
     setState(() => _saving = true);
     try {
+      if (_isEdit) {
+        final existing = widget.existing!;
+        await store.updateProduct(existing.copyWith(
+          name: _name.text.trim(),
+          category: _category!,
+          brand: _brand ?? '',
+          supplier: _supplier ?? '',
+          unit: _unit,
+          price: double.tryParse(_price.text) ?? 0,
+          cost: double.tryParse(_cost.text) ?? 0,
+          reorderLevel: int.tryParse(_reorder.text) ?? 10,
+          criticalLevel: int.tryParse(_critical.text) ?? 5,
+          expiryDate: _expiry,
+        ));
+        navigator.pop();
+        AppToast.successOn(messenger, 'Product updated.');
+        return;
+      }
+
       final qty = int.tryParse(_openingQty.text) ?? 0;
       // SKU left blank on purpose — the repository assigns a unique one.
       final sku = await store.addProduct(Product(
@@ -541,7 +602,7 @@ class _AddProductDialogState extends State<_AddProductDialog> {
       AppToast.successOn(messenger, 'Product added — SKU $sku');
     } catch (e) {
       setState(() => _saving = false);
-      AppToast.errorOn(messenger, 'Could not add product: $e');
+      AppToast.errorOn(messenger, 'Could not ${_isEdit ? 'update' : 'add'} product: $e');
     }
   }
 
@@ -550,7 +611,7 @@ class _AddProductDialogState extends State<_AddProductDialog> {
     final scheme = Theme.of(context).colorScheme;
     return AlertDialog(
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
-      title: const Text('Add Product'),
+      title: Text(_isEdit ? 'Edit Product' : 'Add Product'),
       content: SizedBox(
         width: 460,
         child: Form(
@@ -600,9 +661,11 @@ class _AddProductDialogState extends State<_AddProductDialog> {
                       Icon(Icons.lock_outline, size: 15, color: scheme.onSurfaceVariant),
                       const SizedBox(width: 6),
                       Text(
-                        _category == null
-                            ? 'Auto-generated on save'
-                            : '${ProductsRepository.skuPrefix(_category!)}-•••• (auto)',
+                        _isEdit
+                            ? widget.existing!.sku
+                            : _category == null
+                                ? 'Auto-generated on save'
+                                : '${ProductsRepository.skuPrefix(_category!)}-•••• (auto)',
                         style: TextStyle(color: scheme.onSurfaceVariant),
                       ),
                     ]),
@@ -612,17 +675,26 @@ class _AddProductDialogState extends State<_AddProductDialog> {
                     _field(_cost, 'Cost', number: true)),
                 _twoUp(_field(_reorder, 'Reorder level', number: true),
                     _field(_critical, 'Critical level', number: true)),
-                _twoUp(
-                  _picker(
-                    label: 'Opening branch',
-                    value: _branch,
-                    options: kBranches,
-                    allowCreate: false,
-                    onChanged: (v) => setState(() => _branch = v ?? _branch),
+                if (!_isEdit)
+                  _twoUp(
+                    _picker(
+                      label: 'Opening branch',
+                      value: _branch,
+                      options: kBranches,
+                      allowCreate: false,
+                      onChanged: (v) => setState(() => _branch = v ?? _branch),
+                    ),
+                    _field(_openingQty, 'Opening quantity', number: true),
                   ),
-                  _field(_openingQty, 'Opening quantity', number: true),
-                ),
                 _expiryField(scheme),
+                if (_isEdit)
+                  Padding(
+                    padding: const EdgeInsets.only(top: 4),
+                    child: Text(
+                        'Use "Adjust Stock" from the table to change branch '
+                        'quantities.',
+                        style: TextStyle(fontSize: 12, color: scheme.onSurfaceVariant)),
+                  ),
               ],
             ),
           ),
@@ -638,7 +710,7 @@ class _AddProductDialogState extends State<_AddProductDialog> {
               ? const SizedBox(
                   width: 16, height: 16,
                   child: CircularProgressIndicator(strokeWidth: 2))
-              : const Text('Add Product'),
+              : Text(_isEdit ? 'Save Changes' : 'Add Product'),
         ),
       ],
     );
@@ -739,4 +811,175 @@ class _AddProductDialogState extends State<_AddProductDialog> {
         const SizedBox(width: 10),
         Expanded(child: b),
       ]);
+}
+
+/// Desktop counterpart to the mobile app's Adjust Stock page — same
+/// [AdminStore.adjustStock] call, so the ledger and KPIs update identically
+/// no matter which layout made the change.
+class _AdjustStockDialog extends StatefulWidget {
+  const _AdjustStockDialog({required this.product});
+  final Product product;
+
+  @override
+  State<_AdjustStockDialog> createState() => _AdjustStockDialogState();
+}
+
+class _AdjustStockDialogState extends State<_AdjustStockDialog> {
+  bool _adding = true;
+  late String _branch = widget.product.branchStock.keys.isNotEmpty
+      ? widget.product.branchStock.keys.first
+      : kBranches.first;
+  final _qty = TextEditingController(text: '1');
+  String? _reason;
+  final _remarks = TextEditingController();
+  bool _busy = false;
+
+  List<String> get _reasons => _adding ? kStockInReasons : kStockOutReasons;
+
+  @override
+  void dispose() {
+    _qty.dispose();
+    _remarks.dispose();
+    super.dispose();
+  }
+
+  Future<void> _confirm() async {
+    final qty = int.tryParse(_qty.text) ?? 0;
+    if (qty <= 0) {
+      AppToast.error(context, 'Enter a quantity greater than zero.');
+      return;
+    }
+    final admin = context.read<AdminStore>();
+    final staffName = context.read<AuthController>().currentUser?.fullName ?? 'Admin';
+    final navigator = Navigator.of(context);
+    final messenger = ScaffoldMessenger.of(context);
+    final p = widget.product;
+
+    setState(() => _busy = true);
+    try {
+      await admin.adjustStock(
+        product: p,
+        branch: _branch,
+        delta: _adding ? qty : -qty,
+        reason: _reason ?? _reasons.first,
+        remarks: _remarks.text.trim(),
+        staffName: staffName,
+      );
+      navigator.pop();
+      AppToast.successOn(messenger,
+          '${_adding ? 'Added' : 'Deducted'} $qty ${p.unit} · ${p.name} · $_branch');
+    } catch (e) {
+      AppToast.errorOn(messenger, 'Could not adjust stock: $e');
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    final p = widget.product;
+    final currentQty = p.branchStock[_branch] ?? 0;
+
+    return AlertDialog(
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
+      title: const Text('Adjust Stock'),
+      content: SizedBox(
+        width: 380,
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(p.name, style: const TextStyle(fontWeight: FontWeight.w700)),
+            Text('${p.sku} · currently $currentQty ${p.unit} at $_branch',
+                style: TextStyle(fontSize: 12, color: scheme.onSurfaceVariant)),
+            const SizedBox(height: 16),
+            SegmentedButton<bool>(
+              segments: const [
+                ButtonSegment(
+                    value: true,
+                    icon: Icon(Icons.add_rounded),
+                    label: Text('Add stock')),
+                ButtonSegment(
+                    value: false,
+                    icon: Icon(Icons.remove_rounded),
+                    label: Text('Remove stock')),
+              ],
+              selected: {_adding},
+              showSelectedIcon: false,
+              onSelectionChanged: (s) => setState(() {
+                _adding = s.first;
+                _reason = null;
+              }),
+            ),
+            const SizedBox(height: 14),
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Expanded(
+                  child: InputDecorator(
+                    decoration: const InputDecoration(labelText: 'Branch', isDense: true),
+                    child: DropdownButtonHideUnderline(
+                      child: DropdownButton<String>(
+                        value: _branch,
+                        isExpanded: true,
+                        items: [
+                          for (final b in kBranches)
+                            DropdownMenuItem(value: b, child: Text(b)),
+                        ],
+                        onChanged: (v) => setState(() => _branch = v ?? _branch),
+                      ),
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: TextField(
+                    controller: _qty,
+                    decoration: InputDecoration(
+                        labelText: 'Quantity (${p.unit})', isDense: true),
+                    keyboardType: TextInputType.number,
+                    inputFormatters: [FilteringTextInputFormatter.digitsOnly],
+                    onChanged: (_) => setState(() {}),
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 12),
+            InputDecorator(
+              decoration: const InputDecoration(labelText: 'Reason', isDense: true),
+              child: DropdownButtonHideUnderline(
+                child: DropdownButton<String>(
+                  value: _reason ?? _reasons.first,
+                  isExpanded: true,
+                  items: [
+                    for (final r in _reasons) DropdownMenuItem(value: r, child: Text(r)),
+                  ],
+                  onChanged: (v) => setState(() => _reason = v),
+                ),
+              ),
+            ),
+            const SizedBox(height: 12),
+            TextField(
+              controller: _remarks,
+              decoration: const InputDecoration(labelText: 'Remarks (optional)', isDense: true),
+            ),
+          ],
+        ),
+      ),
+      actions: [
+        TextButton(
+            onPressed: _busy ? null : () => Navigator.pop(context),
+            child: const Text('Cancel')),
+        FilledButton(
+          onPressed: _busy ? null : _confirm,
+          child: _busy
+              ? const SizedBox(
+                  width: 16, height: 16,
+                  child: CircularProgressIndicator(strokeWidth: 2))
+              : const Text('Confirm'),
+        ),
+      ],
+    );
+  }
 }

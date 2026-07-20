@@ -186,6 +186,23 @@ class StaffStore extends ChangeNotifier with FirestoreErrorTracker {
     );
   }
 
+  /// Resolves the customer for [appt], creating one and backfilling the
+  /// booking's `customerId` if it's a walk-in with none yet — otherwise the
+  /// completed session would never show up on that customer's record (their
+  /// "Last visit" would read empty even after they've paid for it).
+  Future<String> resolveCustomerId(Appointment appt) async {
+    final existing = appt.customerId;
+    if (existing != null && existing.isNotEmpty) return existing;
+
+    final created = await addCustomer(
+      fullName: appt.customerName,
+      phone: appt.phone ?? '',
+      branch: appt.branch,
+    );
+    await _appointmentsRepo.setCustomerId(appt.id, created.id);
+    return created.id;
+  }
+
   /// Edit an existing client's contact details / notes.
   Future<void> updateCustomer(
     String id, {

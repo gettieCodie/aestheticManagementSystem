@@ -194,6 +194,20 @@ class _AppointmentCard extends StatelessWidget {
     return store.customerById(a.customerId)?.phone;
   }
 
+  /// The next session of the same package, if one's already been scheduled
+  /// (auto-created when the current session is completed) — null for a
+  /// standalone appointment or the package's final session.
+  Appointment? _nextSession(StaffStore store, Appointment a) {
+    if (a.packageId == null || a.sessionNumber == null) return null;
+    for (final other in store.appointments) {
+      if (other.packageId == a.packageId &&
+          other.sessionNumber == a.sessionNumber! + 1) {
+        return other;
+      }
+    }
+    return null;
+  }
+
   @override
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
@@ -230,6 +244,7 @@ class _AppointmentCard extends StatelessWidget {
   /// The client / service / time block, shared by both layouts.
   Widget _details(
       BuildContext context, Appointment a, StaffStore store, ColorScheme scheme) {
+    final next = _nextSession(store, a);
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -256,8 +271,13 @@ class _AppointmentCard extends StatelessWidget {
             a.sessionLabel(_totalSessions(store))),
         if (_phoneOf(store, a) != null)
           _line(context, Icons.phone_outlined, _phoneOf(store, a)!),
+        _line(context, Icons.event_outlined, Formatters.date(a.date)),
         _line(context, Icons.schedule_rounded, a.time),
         _line(context, Icons.location_on_outlined, '${a.branch} Branch'),
+        if (next != null)
+          _line(context, Icons.event_repeat_rounded,
+              'Next session: ${Formatters.date(next.date)}',
+              color: scheme.primary),
         if (a.status == AppointmentStatus.cancelled && a.cancelReason != null)
           _line(context, Icons.info_outline, 'Cancelled: ${a.cancelReason}',
               color: scheme.error),
@@ -927,6 +947,18 @@ class _MobileAppointmentCard extends StatelessWidget {
     return null;
   }
 
+  /// The next session of the same package, if one's already been scheduled.
+  Appointment? _nextSession(StaffStore store, Appointment a) {
+    if (a.packageId == null || a.sessionNumber == null) return null;
+    for (final other in store.appointments) {
+      if (other.packageId == a.packageId &&
+          other.sessionNumber == a.sessionNumber! + 1) {
+        return other;
+      }
+    }
+    return null;
+  }
+
   /// Design uses a single "Scheduled" pill for anything not yet handled.
   (String, Color, Color) _badge(AppointmentStatus s, ColorScheme scheme) {
     switch (s) {
@@ -952,6 +984,7 @@ class _MobileAppointmentCard extends StatelessWidget {
     final store = context.read<StaffStore>();
     final a = appointment;
     final (label, bg, fg) = _badge(a.status, scheme);
+    final next = _nextSession(store, a);
 
     return Container(
       margin: const EdgeInsets.only(bottom: 12),
@@ -987,11 +1020,20 @@ class _MobileAppointmentCard extends StatelessWidget {
             ],
           ),
           const SizedBox(height: 6),
-          Text('${a.time} · ${a.sessionLabel(_totalSessions(store))}',
+          Text(
+              '${Formatters.date(a.date)} · ${a.time} · '
+              '${a.sessionLabel(_totalSessions(store))}',
               style: TextStyle(
                   fontSize: 12.5,
                   fontWeight: FontWeight.w600,
                   color: scheme.primary)),
+          if (next != null)
+            Padding(
+              padding: const EdgeInsets.only(top: 4),
+              child: Text('Next session: ${Formatters.date(next.date)}',
+                  style: TextStyle(
+                      fontSize: 12, fontWeight: FontWeight.w600, color: scheme.primary)),
+            ),
           if (a.status == AppointmentStatus.cancelled && a.cancelReason != null)
             Padding(
               padding: const EdgeInsets.only(top: 4),
@@ -1245,16 +1287,9 @@ class _TreatmentRecordDialogState extends State<_TreatmentRecordDialog> {
     }
 
     // 2. Standalone → hand off to POS with client + service prefilled.
-    var customerId = appt.customerId ?? '';
-    if (customerId.isEmpty) {
-      // Walk-in: turn them into a client record so POS has a customer.
-      final created = await store.addCustomer(
-        fullName: appt.customerName,
-        phone: appt.phone ?? '',
-        branch: appt.branch,
-      );
-      customerId = created.id;
-    }
+    // Walk-ins get a client record created (and the booking backfilled to
+    // point at it) here, so this completed session shows up on their record.
+    final customerId = await store.resolveCustomerId(appt);
     store.setPendingCheckout(PendingCheckout(
       customerId: customerId,
       customerName: appt.customerName,

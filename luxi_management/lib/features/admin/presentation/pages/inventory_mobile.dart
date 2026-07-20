@@ -77,7 +77,7 @@ class _MobileScaffold extends StatelessWidget {
                       color: Theme.of(context).colorScheme.onSurfaceVariant)),
           ],
         ),
-        actions: [if (action != null) action!, const SizedBox(width: 8)],
+        actions: [?action, const SizedBox(width: 8)],
       ),
       floatingActionButton: floatingActionButton,
       bottomNavigationBar: bottomBar,
