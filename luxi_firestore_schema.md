@@ -1,3 +1,31 @@
+# Luxi — Appointment Management System
+
+A Flutter and Firebase-based appointment management system developed for **Luxuriskin Aesthetic Clinic**. The project serves as the first development phase of the complete clinic management system and focuses on streamlining appointment scheduling, customer management, Point-of-Sale (POS), and inventory operations through a centralized platform.
+
+The system allows customers to conveniently book appointments while enabling staff and administrators to efficiently manage appointments, customer records, sales transactions, inventory, and clinic operations across multiple branches. It also provides a scalable foundation for future enhancements, including predictive analytics and AI-driven decision support.
+
+## Key Modules
+
+- Appointment Management
+- Customer Management
+- Point-of-Sale (POS)
+- Inventory Management
+- Product Management
+- Branch Management
+- Payment Management
+- Package Management
+- Sales Monitoring
+
+## System Workflow
+
+1. Customer books an appointment.
+2. Staff reviews and confirms the booking.
+3. Customer receives the appointment status.
+4. Staff performs the treatment.
+5. POS records the transaction.
+6. Inventory is automatically updated after every completed transaction.
+7. Sales and inventory summaries are updated for reporting.
+
 # Luxi — Firestore Data Model
 
 Complete collection reference for the Luxuriskin management system (Flutter +
