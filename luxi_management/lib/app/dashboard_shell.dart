@@ -7,10 +7,19 @@ import '../features/auth/state/auth_controller.dart';
 import 'nav_controller.dart';
 
 class NavItem {
-  const NavItem(this.label, this.icon, this.page);
+  const NavItem(this.label, this.icon, this.page, {this.shortLabel});
+
+  /// Full name, used by the sidebar and the app bar title.
   final String label;
+
+  /// One word for the bottom bar, where a fifth of the width isn't enough for
+  /// something like "User Management" without wrapping to two lines.
+  final String? shortLabel;
+
   final IconData icon;
   final Widget page;
+
+  String get barLabel => shortLabel ?? label;
 }
 
 /// The post-login application shell. Rendered separately for Admin and Staff —
@@ -105,7 +114,8 @@ class _DashboardShellState extends State<DashboardShell> {
           onSelected: _select,
           destinations: [
             for (final item in tabs)
-              NavigationDestination(icon: Icon(item.icon), label: item.label),
+              NavigationDestination(
+                  icon: Icon(item.icon), label: item.barLabel),
           ],
         ),
         key: _scaffoldKey,
@@ -173,18 +183,46 @@ class _FloatingNavBar extends StatelessWidget {
           ),
           child: ClipRRect(
             borderRadius: BorderRadius.circular(26),
-            child: NavigationBar(
-              selectedIndex: selectedIndex,
-              onDestinationSelected: onSelected,
-              destinations: destinations,
-              // The wrapper supplies the surface, shadow and shape.
-              backgroundColor: Colors.transparent,
-              surfaceTintColor: Colors.transparent,
-              elevation: 0,
-              height: 68,
-              indicatorColor: scheme.primary.withValues(alpha: 0.16),
-              labelBehavior:
-                  NavigationDestinationLabelBehavior.onlyShowSelected,
+            child: NavigationBarTheme(
+              // Small, single-line labels. The default body-size label is too
+              // large once five destinations share a phone's width.
+              data: NavigationBarThemeData(
+                labelTextStyle: WidgetStateProperty.resolveWith(
+                  (states) => TextStyle(
+                    fontSize: 10.5,
+                    height: 1.1,
+                    fontWeight: states.contains(WidgetState.selected)
+                        ? FontWeight.w700
+                        : FontWeight.w500,
+                    color: states.contains(WidgetState.selected)
+                        ? scheme.primary
+                        : scheme.onSurfaceVariant,
+                  ),
+                ),
+                iconTheme: WidgetStateProperty.resolveWith(
+                  (states) => IconThemeData(
+                    size: 22,
+                    color: states.contains(WidgetState.selected)
+                        ? scheme.primary
+                        : scheme.onSurfaceVariant,
+                  ),
+                ),
+              ),
+              child: NavigationBar(
+                selectedIndex: selectedIndex,
+                onDestinationSelected: onSelected,
+                destinations: destinations,
+                // The wrapper supplies the surface, shadow and shape.
+                backgroundColor: Colors.transparent,
+                surfaceTintColor: Colors.transparent,
+                elevation: 0,
+                height: 64,
+                indicatorColor: scheme.primary.withValues(alpha: 0.15),
+                // Always visible: with onlyShowSelected the bar's contents
+                // shifted on every tap, which reads as unstable.
+                labelBehavior:
+                    NavigationDestinationLabelBehavior.alwaysShow,
+              ),
             ),
           ),
         ),

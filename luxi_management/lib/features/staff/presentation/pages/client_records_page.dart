@@ -243,11 +243,9 @@ class _ClientRecordsPageState extends State<ClientRecordsPage> {
         child: DropdownButton<_Sort>(
           value: _sort,
           isExpanded: true,
-          items: const [
-            DropdownMenuItem(value: _Sort.nameAsc, child: Text('Name A–Z')),
-            DropdownMenuItem(value: _Sort.recentVisit, child: Text('Recent visit')),
-            DropdownMenuItem(value: _Sort.memberSince, child: Text('Newest member')),
-            DropdownMenuItem(value: _Sort.outstanding, child: Text('Highest balance')),
+          items: [
+            for (final entry in _sortLabels.entries)
+              DropdownMenuItem(value: entry.key, child: Text(entry.value)),
           ],
           onChanged: (v) => setState(() {
             _sort = v ?? _sort;
@@ -264,6 +262,9 @@ class _ClientRecordsPageState extends State<ClientRecordsPage> {
         _filterChip('All', _Filter.all),
         _filterChip('Active packages', _Filter.activePackages),
         _filterChip('With balance', _Filter.withBalance),
+        // On phones sort joins the chip row — a full-width labelled dropdown
+        // gave one control more visual weight than all three filters combined.
+        if (isMobile) _sortChip(),
       ],
     );
 
@@ -285,8 +286,6 @@ class _ClientRecordsPageState extends State<ClientRecordsPage> {
                 SizedBox(height: 44, child: addButton),
                 const SizedBox(height: 12),
                 chips,
-                const SizedBox(height: 12),
-                sortDropdown,
               ],
             )
           : Column(
@@ -308,6 +307,47 @@ class _ClientRecordsPageState extends State<ClientRecordsPage> {
                 ),
               ],
             ),
+    );
+  }
+
+  static const Map<_Sort, String> _sortLabels = {
+    _Sort.nameAsc: 'Name A–Z',
+    _Sort.recentVisit: 'Recent visit',
+    _Sort.memberSince: 'Newest member',
+    _Sort.outstanding: 'Highest balance',
+  };
+
+  /// Sort rendered as an outlined chip so it matches the filters beside it.
+  Widget _sortChip() {
+    final scheme = Theme.of(context).colorScheme;
+    return PopupMenuButton<_Sort>(
+      initialValue: _sort,
+      onSelected: (v) => setState(() {
+        _sort = v;
+        _resetPage();
+      }),
+      itemBuilder: (_) => [
+        for (final entry in _sortLabels.entries)
+          PopupMenuItem(value: entry.key, child: Text(entry.value)),
+      ],
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(20),
+          border: Border.all(color: scheme.outlineVariant),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(Icons.swap_vert_rounded,
+                size: 16, color: scheme.onSurfaceVariant),
+            const SizedBox(width: 5),
+            Text(_sortLabels[_sort] ?? '',
+                style: const TextStyle(
+                    fontSize: 13, fontWeight: FontWeight.w500)),
+          ],
+        ),
+      ),
     );
   }
 
