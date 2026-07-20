@@ -83,6 +83,9 @@ class ProductsRepository {
         cost: (data['cost'] as num?)?.toDouble() ?? 0,
         reorderLevel: (data['reorderLevel'] as num?)?.toInt() ?? 0,
         criticalLevel: (data['criticalLevel'] as num?)?.toInt() ?? 0,
+        brand: data['brand'] as String? ?? '',
+        expiryDate: (data['expiryDate'] as Timestamp?)?.toDate(),
+        createdAt: (data['createdAt'] as Timestamp?)?.toDate(),
         branchStock: stockByProduct[doc.id] ??
             {for (final b in BranchLookup.idByShortName.keys) b: 0},
       );
@@ -90,17 +93,46 @@ class ProductsRepository {
       ..sort((a, b) => a.name.compareTo(b.name));
   }
 
+  /// Three-letter SKU prefix derived from the category, e.g. Serum -> SER.
+  static String skuPrefix(String category) {
+    final letters = category.toUpperCase().replaceAll(RegExp('[^A-Z]'), '');
+    if (letters.isEmpty) return 'GEN';
+    return letters.length >= 3 ? letters.substring(0, 3) : letters.padRight(3, 'X');
+  }
+
+  /// Allocates the next unique SKU for a category (e.g. `SER-0001`).
+  ///
+  /// Backed by an atomic counter per prefix in `meta/counters`, so two admins
+  /// adding a product at the same time can never receive the same SKU.
+  Future<String> nextSku(String category) async {
+    final prefix = skuPrefix(category);
+    final counterRef = _db.collection('meta').doc('counters');
+    final field = 'sku_$prefix';
+    final n = await _db.runTransaction<int>((tx) async {
+      final snap = await tx.get(counterRef);
+      final next = ((snap.data()?[field] as num?)?.toInt() ?? 0) + 1;
+      tx.set(counterRef, {field: next}, SetOptions(merge: true));
+      return next;
+    });
+    return '$prefix-${n.toString().padLeft(4, '0')}';
+  }
+
   /// [product.id] is ignored — a fresh `product_NN` id is minted here.
-  Future<void> addProduct(Product product) async {
+  /// A blank [product.sku] is auto-assigned a unique category-based SKU.
+  Future<String> addProduct(Product product) async {
     final id = await _ids.next(
         counterField: 'productSeq', prefix: 'product_', collection: 'products');
+    final sku =
+        product.sku.trim().isEmpty ? await nextSku(product.category) : product.sku.trim();
     await _db.collection('products').doc(id).set({
       ..._toMap(product),
+      'sku': sku,
       'isActive': true,
       'createdAt': FieldValue.serverTimestamp(),
       'updatedAt': FieldValue.serverTimestamp(),
     });
     await _writeStock(id, product);
+    return sku;
   }
 
   Future<void> updateProduct(Product product) async {
@@ -171,5 +203,10 @@ class ProductsRepository {
         'cost': p.cost,
         'reorderLevel': p.reorderLevel,
         'criticalLevel': p.criticalLevel,
+        'brand': p.brand,
+        // Written even when null so clearing the date on an edit actually
+        // removes it — a merge write would otherwise keep the old value.
+        'expiryDate':
+            p.expiryDate == null ? null : Timestamp.fromDate(p.expiryDate!),
       };
 }

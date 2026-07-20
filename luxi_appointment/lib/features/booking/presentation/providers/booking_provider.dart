@@ -92,6 +92,14 @@ class BookingProvider extends ChangeNotifier {
     notifyListeners();
   }
 
+  /// Clears just the picked time — used when [confirmBooking] finds out the
+  /// slot filled up after it was picked, so the user can't resubmit the same
+  /// now-invalid slot.
+  void clearTime() {
+    _selectedTime = null;
+    notifyListeners();
+  }
+
   void updateClientInfo({
     String? fullName,
     String? email,

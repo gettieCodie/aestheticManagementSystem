@@ -4,6 +4,7 @@ import 'package:provider/provider.dart';
 import '../../../../core/constants/app_spacing.dart';
 import '../../../../core/widgets/content_shell.dart';
 import '../../../../core/widgets/primary_button.dart';
+import '../../services/booking_data_service.dart';
 import '../providers/booking_provider.dart';
 import '../widgets/progress_header.dart';
 import 'steps/book_appointment_step.dart';
@@ -67,6 +68,21 @@ class _BookingFlowPageState extends State<BookingFlowPage> {
     setState(() => _submitting = true);
     try {
       await provider.confirmBooking();
+    } on SlotFullException catch (e) {
+      // Someone else booked this exact slot while the client was filling in
+      // Steps 3-4 — send them back to Appointment to pick a different time
+      // instead of silently double-booking it.
+      if (!mounted) return;
+      setState(() => _submitting = false);
+      provider.clearTime();
+      provider.goToStep(1);
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(e.toString()),
+          backgroundColor: Theme.of(context).colorScheme.error,
+        ),
+      );
+      return;
     } catch (e) {
       // Network error, server rejected it, backend not running, etc.
       if (!mounted) return;

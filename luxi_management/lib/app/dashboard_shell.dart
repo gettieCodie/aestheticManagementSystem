@@ -7,10 +7,19 @@ import '../features/auth/state/auth_controller.dart';
 import 'nav_controller.dart';
 
 class NavItem {
-  const NavItem(this.label, this.icon, this.page);
+  const NavItem(this.label, this.icon, this.page, {this.shortLabel});
+
+  /// Full name, used by the sidebar and the app bar title.
   final String label;
+
+  /// One word for the bottom bar, where a fifth of the width isn't enough for
+  /// something like "User Management" without wrapping to two lines.
+  final String? shortLabel;
+
   final IconData icon;
   final Widget page;
+
+  String get barLabel => shortLabel ?? label;
 }
 
 /// The post-login application shell. Rendered separately for Admin and Staff —
@@ -31,6 +40,9 @@ class DashboardShell extends StatefulWidget {
 }
 
 class _DashboardShellState extends State<DashboardShell> {
+  /// Lets the bottom bar's "More" destination open the drawer.
+  final _scaffoldKey = GlobalKey<ScaffoldState>();
+
   void _select(int i) => context.read<NavController>().select(i);
 
   @override
@@ -38,12 +50,47 @@ class _DashboardShellState extends State<DashboardShell> {
     // Index lives in NavController so pages can switch tabs programmatically.
     final rawIndex = context.watch<NavController>().index;
     final index = rawIndex < widget.navItems.length ? rawIndex : 0;
-    final body = widget.navItems[index].page;
+
+    // Cross-fade with a small upward drift when switching destinations. Keyed
+    // by index so the switcher knows the child actually changed.
+    final body = AnimatedSwitcher(
+      duration: const Duration(milliseconds: 240),
+      switchInCurve: Curves.easeOutCubic,
+      switchOutCurve: Curves.easeIn,
+      transitionBuilder: (child, animation) => FadeTransition(
+        opacity: animation,
+        child: SlideTransition(
+          position: Tween<Offset>(
+            begin: const Offset(0, 0.02),
+            end: Offset.zero,
+          ).animate(animation),
+          child: child,
+        ),
+      ),
+      // The outgoing page is removed immediately rather than cross-faded on
+      // top of the new one, which otherwise doubles scrollbars mid-transition.
+      layoutBuilder: (current, previous) => Stack(
+        alignment: Alignment.topLeft,
+        children: [?current],
+      ),
+      child: KeyedSubtree(
+        key: ValueKey(index),
+        child: widget.navItems[index].page,
+      ),
+    );
 
     if (Responsive.isMobile(context)) {
+      // Bottom nav holds up to 5 destinations. Anything past that is reached
+      // from the drawer (the app bar's menu button) rather than a "More" tab.
+      const maxTabs = 5;
+      final tabs = widget.navItems.length > maxTabs
+          ? widget.navItems.take(maxTabs).toList()
+          : widget.navItems;
+      final selectedTab = index < tabs.length ? index : 0;
+
       return Scaffold(
         appBar: AppBar(
-          title: Text('Luxi · ${widget.navItems[index].label}'),
+          title: Text(widget.navItems[index].label),
           actions: const [_ThemeToggle()],
         ),
         drawer: Drawer(
@@ -59,7 +106,19 @@ class _DashboardShellState extends State<DashboardShell> {
             ),
           ),
         ),
+        // Content flows under the floating bar so it appears to hover.
+        extendBody: true,
         body: body,
+        bottomNavigationBar: _FloatingNavBar(
+          selectedIndex: selectedTab,
+          onSelected: _select,
+          destinations: [
+            for (final item in tabs)
+              NavigationDestination(
+                  icon: Icon(item.icon), label: item.barLabel),
+          ],
+        ),
+        key: _scaffoldKey,
       );
     }
 
@@ -81,6 +140,92 @@ class _DashboardShellState extends State<DashboardShell> {
           const VerticalDivider(width: 1),
           Expanded(child: body),
         ],
+      ),
+    );
+  }
+}
+
+/// Bottom navigation rendered as a detached, rounded bar that hovers over the
+/// content instead of sitting flush against the screen edge.
+class _FloatingNavBar extends StatelessWidget {
+  const _FloatingNavBar({
+    required this.selectedIndex,
+    required this.onSelected,
+    required this.destinations,
+  });
+
+  final int selectedIndex;
+  final ValueChanged<int> onSelected;
+  final List<NavigationDestination> destinations;
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+
+    return SafeArea(
+      top: false,
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
+        child: DecoratedBox(
+          decoration: BoxDecoration(
+            color: scheme.surface,
+            borderRadius: BorderRadius.circular(26),
+            border: Border.all(
+                color: scheme.outlineVariant.withValues(alpha: 0.6)),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withValues(alpha: isDark ? 0.45 : 0.12),
+                blurRadius: 20,
+                offset: const Offset(0, 6),
+              ),
+            ],
+          ),
+          child: ClipRRect(
+            borderRadius: BorderRadius.circular(26),
+            child: NavigationBarTheme(
+              // Small, single-line labels. The default body-size label is too
+              // large once five destinations share a phone's width.
+              data: NavigationBarThemeData(
+                labelTextStyle: WidgetStateProperty.resolveWith(
+                  (states) => TextStyle(
+                    fontSize: 10.5,
+                    height: 1.1,
+                    fontWeight: states.contains(WidgetState.selected)
+                        ? FontWeight.w700
+                        : FontWeight.w500,
+                    color: states.contains(WidgetState.selected)
+                        ? scheme.primary
+                        : scheme.onSurfaceVariant,
+                  ),
+                ),
+                iconTheme: WidgetStateProperty.resolveWith(
+                  (states) => IconThemeData(
+                    size: 22,
+                    color: states.contains(WidgetState.selected)
+                        ? scheme.primary
+                        : scheme.onSurfaceVariant,
+                  ),
+                ),
+              ),
+              child: NavigationBar(
+                selectedIndex: selectedIndex,
+                onDestinationSelected: onSelected,
+                destinations: destinations,
+                // The wrapper supplies the surface, shadow and shape.
+                backgroundColor: Colors.transparent,
+                surfaceTintColor: Colors.transparent,
+                elevation: 0,
+                height: 64,
+                indicatorColor: scheme.primary.withValues(alpha: 0.15),
+                // Always visible: with onlyShowSelected the bar's contents
+                // shifted on every tap, which reads as unstable.
+                labelBehavior:
+                    NavigationDestinationLabelBehavior.alwaysShow,
+              ),
+            ),
+          ),
+        ),
       ),
     );
   }

@@ -9,15 +9,25 @@ abstract final class Formatters {
   static String date(DateTime d) =>
       '${_months[d.month - 1]} ${d.day}, ${d.year}';
 
-  /// e.g. "₱17,500"
+  /// e.g. "2:14 PM"
+  static String time(DateTime d) {
+    final period = d.hour < 12 ? 'AM' : 'PM';
+    final hour = d.hour % 12 == 0 ? 12 : d.hour % 12;
+    return '$hour:${d.minute.toString().padLeft(2, '0')} $period';
+  }
+
+  /// e.g. "₱17,500", or "−₱500" for negatives.
   static String peso(num amount) {
-    final whole = amount.round().toString();
+    final rounded = amount.round();
+    // Group the digits only — feeding a leading "-" into the loop below
+    // miscounts the thousands boundary (−500 came out as "₱-,500").
+    final whole = rounded.abs().toString();
     final buffer = StringBuffer();
     for (int i = 0; i < whole.length; i++) {
       if (i > 0 && (whole.length - i) % 3 == 0) buffer.write(',');
       buffer.write(whole[i]);
     }
-    return '₱$buffer';
+    return '${rounded < 0 ? '−' : ''}₱$buffer';
   }
 
   /// e.g. "60 min" or "1 hr 30 min"

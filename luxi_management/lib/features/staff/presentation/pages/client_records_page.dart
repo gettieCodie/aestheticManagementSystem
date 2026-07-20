@@ -2,9 +2,13 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
 import '../../../../core/utils/formatters.dart';
+import '../../../../core/utils/responsive.dart';
+import '../../../../core/utils/validators.dart';
+import '../../../../core/widgets/app_toast.dart';
 import '../../../admin/presentation/pages/page_scaffold.dart';
 import '../../../admin/presentation/widgets/section_card.dart';
 import '../../../admin/presentation/widgets/stat_card.dart';
+import '../../../auth/state/auth_controller.dart';
 import '../../../billing/models/invoice.dart';
 import '../../../billing/state/billing_store.dart';
 import '../../models/customer.dart';
@@ -30,9 +34,12 @@ class ClientRecordsPage extends StatefulWidget {
 }
 
 class _ClientRecordsPageState extends State<ClientRecordsPage> {
+  static const int _pageSize = 10;
+
   final _search = TextEditingController();
   _Filter _filter = _Filter.all;
   _Sort _sort = _Sort.nameAsc;
+  int _page = 0;
 
   @override
   void dispose() {
@@ -40,12 +47,20 @@ class _ClientRecordsPageState extends State<ClientRecordsPage> {
     super.dispose();
   }
 
+  /// Any change to the query must send the reader back to the first page,
+  /// otherwise a narrower result set leaves them on an empty page.
+  void _resetPage() => _page = 0;
+
   @override
   Widget build(BuildContext context) {
     final staff = context.watch<StaffStore>();
     final billing = context.watch<BillingStore>();
+    final branch = context.watch<AuthController>().currentUser?.branch;
 
-    var list = staff.customers.where((c) => c.matches(_search.text)).toList();
+    final branchCustomers =
+        staff.customers.where((c) => c.visibleTo(branch)).toList();
+
+    var list = branchCustomers.where((c) => c.matches(_search.text)).toList();
     list = list.where((c) {
       switch (_filter) {
         case _Filter.all:
@@ -73,11 +88,17 @@ class _ClientRecordsPageState extends State<ClientRecordsPage> {
       }
     });
 
-    final withBalance = staff.customers
+    final withBalance = branchCustomers
         .where((c) => _outstandingFor(billing, c.id) > 0)
         .length;
     final activePkgs =
-        staff.customers.where((c) => c.activePackages > 0).length;
+        branchCustomers.where((c) => c.activePackages > 0).length;
+
+    // --- Pagination ---
+    final pageCount = (list.length / _pageSize).ceil().clamp(1, 9999);
+    final page = _page.clamp(0, pageCount - 1);
+    final start = page * _pageSize;
+    final visible = list.skip(start).take(_pageSize).toList();
 
     return AdminPageScaffold(
       title: 'Client Records',
@@ -86,7 +107,7 @@ class _ClientRecordsPageState extends State<ClientRecordsPage> {
         StatRow(cards: [
           StatCard(
               label: 'Total Clients',
-              value: '${staff.customers.length}',
+              value: '${branchCustomers.length}',
               icon: Icons.people_alt_rounded),
           StatCard(
               label: 'Active Packages',
@@ -106,18 +127,152 @@ class _ClientRecordsPageState extends State<ClientRecordsPage> {
             padding: const EdgeInsets.all(24),
             child: Text('No clients match your search.',
                 style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant)),
+          )
+        else
+          Padding(
+            padding: const EdgeInsets.only(bottom: 10, left: 2),
+            child: Text(
+              'Showing ${start + 1}–${start + visible.length} of ${list.length}',
+              style: TextStyle(
+                  fontSize: 12,
+                  color: Theme.of(context).colorScheme.onSurfaceVariant),
+            ),
           ),
-        for (final c in list)
+        for (final c in visible)
           _ClientCard(
             customer: c,
             outstanding: _outstandingFor(billing, c.id),
           ),
+        if (pageCount > 1) _pager(context, page, pageCount),
       ],
+    );
+  }
+
+  /// Prev / page numbers / Next. Numbers collapse to a window of five so the
+  /// row never overflows on a phone.
+  Widget _pager(BuildContext context, int page, int pageCount) {
+    final scheme = Theme.of(context).colorScheme;
+
+    int windowStart = page - 2;
+    if (windowStart < 0) windowStart = 0;
+    if (windowStart > pageCount - 5) windowStart = pageCount - 5;
+    if (windowStart < 0) windowStart = 0;
+    final windowEnd = (windowStart + 5).clamp(0, pageCount);
+
+    return Padding(
+      padding: const EdgeInsets.only(top: 6),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          IconButton(
+            onPressed: page == 0 ? null : () => setState(() => _page = page - 1),
+            icon: const Icon(Icons.chevron_left_rounded),
+            tooltip: 'Previous page',
+          ),
+          for (int i = windowStart; i < windowEnd; i++)
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 2),
+              child: SizedBox(
+                width: 34,
+                height: 34,
+                child: Material(
+                  color: i == page ? scheme.primary : Colors.transparent,
+                  borderRadius: BorderRadius.circular(9),
+                  child: InkWell(
+                    borderRadius: BorderRadius.circular(9),
+                    onTap: () => setState(() => _page = i),
+                    child: Center(
+                      child: Text(
+                        '${i + 1}',
+                        style: TextStyle(
+                          fontSize: 13,
+                          fontWeight:
+                              i == page ? FontWeight.w800 : FontWeight.w500,
+                          color: i == page
+                              ? scheme.onPrimary
+                              : scheme.onSurfaceVariant,
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          IconButton(
+            onPressed: page >= pageCount - 1
+                ? null
+                : () => setState(() => _page = page + 1),
+            icon: const Icon(Icons.chevron_right_rounded),
+            tooltip: 'Next page',
+          ),
+        ],
+      ),
     );
   }
 
   Widget _toolbar(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
+    final isMobile = Responsive.isMobile(context);
+
+    final searchField = TextField(
+      controller: _search,
+      onChanged: (_) => setState(_resetPage),
+      decoration: InputDecoration(
+        hintText: isMobile ? 'Search clients' : 'Search by name, phone, or client ID',
+        prefixIcon: const Icon(Icons.search_rounded),
+        isDense: true,
+        suffixIcon: _search.text.isEmpty
+            ? null
+            : IconButton(
+                icon: const Icon(Icons.close_rounded, size: 18),
+                onPressed: () => setState(() {
+                  _search.clear();
+                  _resetPage();
+                }),
+              ),
+      ),
+    );
+
+    final addButton = FilledButton.icon(
+      onPressed: () => showDialog<void>(
+        context: context,
+        builder: (_) => const _ClientFormDialog(),
+      ),
+      icon: const Icon(Icons.person_add_alt_1, size: 18),
+      label: const Text('Add Client'),
+    );
+
+    final sortDropdown = InputDecorator(
+      decoration: const InputDecoration(labelText: 'Sort', isDense: true),
+      child: DropdownButtonHideUnderline(
+        child: DropdownButton<_Sort>(
+          value: _sort,
+          isExpanded: true,
+          items: [
+            for (final entry in _sortLabels.entries)
+              DropdownMenuItem(value: entry.key, child: Text(entry.value)),
+          ],
+          onChanged: (v) => setState(() {
+            _sort = v ?? _sort;
+            _resetPage();
+          }),
+        ),
+      ),
+    );
+
+    final chips = Wrap(
+      spacing: 8,
+      runSpacing: 8,
+      children: [
+        _filterChip('All', _Filter.all),
+        _filterChip('Active packages', _Filter.activePackages),
+        _filterChip('With balance', _Filter.withBalance),
+        // On phones sort joins the chip row — a full-width labelled dropdown
+        // gave one control more visual weight than all three filters combined.
+        if (isMobile) _sortChip(),
+      ],
+    );
+
     return Container(
       padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
@@ -125,75 +280,78 @@ class _ClientRecordsPageState extends State<ClientRecordsPage> {
         borderRadius: BorderRadius.circular(16),
         border: Border.all(color: scheme.outlineVariant.withValues(alpha: 0.7)),
       ),
-      child: Column(
-        children: [
-          Row(
-            children: [
-              Expanded(
-                child: TextField(
-                  controller: _search,
-                  onChanged: (_) => setState(() {}),
-                  decoration: InputDecoration(
-                    hintText: 'Search by name, phone, or client ID',
-                    prefixIcon: const Icon(Icons.search_rounded),
-                    isDense: true,
-                    suffixIcon: _search.text.isEmpty
-                        ? null
-                        : IconButton(
-                            icon: const Icon(Icons.close_rounded, size: 18),
-                            onPressed: () => setState(() => _search.clear()),
-                          ),
-                  ),
-                ),
-              ),
-              const SizedBox(width: 12),
-              FilledButton.icon(
-                onPressed: () => showDialog<void>(
-                  context: context,
-                  builder: (_) => const _ClientFormDialog(),
-                ),
-                icon: const Icon(Icons.person_add_alt_1, size: 18),
-                label: const Text('Add Client'),
-              ),
-            ],
-          ),
-          const SizedBox(height: 12),
-          Row(
-            children: [
-              Expanded(
-                child: Wrap(
-                  spacing: 8,
+      // Phones stack everything full width — side by side, the search box and
+      // the sort dropdown were both squeezed to unreadable widths.
+      child: isMobile
+          ? Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                searchField,
+                const SizedBox(height: 10),
+                SizedBox(height: 44, child: addButton),
+                const SizedBox(height: 12),
+                chips,
+              ],
+            )
+          : Column(
+              children: [
+                Row(
                   children: [
-                    _filterChip('All', _Filter.all),
-                    _filterChip('Active packages', _Filter.activePackages),
-                    _filterChip('With balance', _Filter.withBalance),
+                    Expanded(child: searchField),
+                    const SizedBox(width: 12),
+                    addButton,
                   ],
                 ),
-              ),
-              const SizedBox(width: 8),
-              SizedBox(
-                width: 180,
-                child: InputDecorator(
-                  decoration: const InputDecoration(
-                      labelText: 'Sort', isDense: true),
-                  child: DropdownButtonHideUnderline(
-                    child: DropdownButton<_Sort>(
-                      value: _sort,
-                      isExpanded: true,
-                      items: const [
-                        DropdownMenuItem(value: _Sort.nameAsc, child: Text('Name A–Z')),
-                        DropdownMenuItem(value: _Sort.recentVisit, child: Text('Recent visit')),
-                        DropdownMenuItem(value: _Sort.memberSince, child: Text('Newest member')),
-                        DropdownMenuItem(value: _Sort.outstanding, child: Text('Highest balance')),
-                      ],
-                      onChanged: (v) => setState(() => _sort = v ?? _sort),
-                    ),
-                  ),
+                const SizedBox(height: 12),
+                Row(
+                  children: [
+                    Expanded(child: chips),
+                    const SizedBox(width: 8),
+                    SizedBox(width: 180, child: sortDropdown),
+                  ],
                 ),
-              ),
-            ],
-          ),
-        ],
+              ],
+            ),
+    );
+  }
+
+  static const Map<_Sort, String> _sortLabels = {
+    _Sort.nameAsc: 'Name A–Z',
+    _Sort.recentVisit: 'Recent visit',
+    _Sort.memberSince: 'Newest member',
+    _Sort.outstanding: 'Highest balance',
+  };
+
+  /// Sort rendered as an outlined chip so it matches the filters beside it.
+  Widget _sortChip() {
+    final scheme = Theme.of(context).colorScheme;
+    return PopupMenuButton<_Sort>(
+      initialValue: _sort,
+      onSelected: (v) => setState(() {
+        _sort = v;
+        _resetPage();
+      }),
+      itemBuilder: (_) => [
+        for (final entry in _sortLabels.entries)
+          PopupMenuItem(value: entry.key, child: Text(entry.value)),
+      ],
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(20),
+          border: Border.all(color: scheme.outlineVariant),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(Icons.swap_vert_rounded,
+                size: 16, color: scheme.onSurfaceVariant),
+            const SizedBox(width: 5),
+            Text(_sortLabels[_sort] ?? '',
+                style: const TextStyle(
+                    fontSize: 13, fontWeight: FontWeight.w500)),
+          ],
+        ),
       ),
     );
   }
@@ -202,7 +360,10 @@ class _ClientRecordsPageState extends State<ClientRecordsPage> {
     return FilterChip(
       label: Text(label),
       selected: _filter == value,
-      onSelected: (_) => setState(() => _filter = value),
+      onSelected: (_) => setState(() {
+        _filter = value;
+        _resetPage();
+      }),
     );
   }
 }
@@ -316,18 +477,23 @@ class _ClientFormDialogState extends State<_ClientFormDialog> {
   }
 
   Future<void> _save() async {
-    if (!(_formKey.currentState?.validate() ?? false)) return;
+    final messenger = ScaffoldMessenger.of(context);
+    if (!(_formKey.currentState?.validate() ?? false)) {
+      AppToast.errorOn(messenger, 'Please fix the highlighted fields.');
+      return;
+    }
     final store = context.read<StaffStore>();
     final navigator = Navigator.of(context);
-    final messenger = ScaffoldMessenger.of(context);
     try {
       if (widget.existing == null) {
+        final branch = context.read<AuthController>().currentUser?.branch;
         await store.addCustomer(
           fullName: _name.text.trim(),
           phone: _phone.text.trim(),
           email: _email.text.trim(),
           facebook: _facebook.text.trim(),
           notes: _notes.text.trim(),
+          branch: branch,
         );
       } else {
         await store.updateCustomer(
@@ -340,10 +506,13 @@ class _ClientFormDialogState extends State<_ClientFormDialog> {
         );
       }
       navigator.pop();
+      AppToast.successOn(
+          messenger,
+          widget.existing == null
+              ? '${_name.text.trim()} added to client records.'
+              : '${_name.text.trim()} updated.');
     } catch (e) {
-      messenger.showSnackBar(
-        SnackBar(content: Text('Could not save client: $e')),
-      );
+      AppToast.errorOn(messenger, 'Could not save client: $e');
     }
   }
 
@@ -361,9 +530,16 @@ class _ClientFormDialogState extends State<_ClientFormDialog> {
             child: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
-                _field(_name, 'Full name', Icons.person_outline, required: true),
-                _field(_phone, 'Phone', Icons.phone_outlined, required: true),
-                _field(_email, 'Email', Icons.mail_outline),
+                _field(_name, 'Full name', Icons.person_outline,
+                    validator: Validate.all(
+                        [Validate.required, Validate.minLength(2)])),
+                _field(_phone, 'Phone', Icons.phone_outlined,
+                    keyboard: TextInputType.phone,
+                    validator:
+                        Validate.all([Validate.required, Validate.phone])),
+                _field(_email, 'Email', Icons.mail_outline,
+                    keyboard: TextInputType.emailAddress,
+                    validator: Validate.email),
                 _field(_facebook, 'Facebook', Icons.facebook_outlined),
                 _field(_notes, 'Notes', Icons.sticky_note_2_outlined, lines: 2),
               ],
@@ -378,18 +554,23 @@ class _ClientFormDialogState extends State<_ClientFormDialog> {
     );
   }
 
-  Widget _field(TextEditingController c, String label, IconData icon,
-      {bool required = false, int lines = 1}) {
+  Widget _field(
+    TextEditingController c,
+    String label,
+    IconData icon, {
+    int lines = 1,
+    TextInputType? keyboard,
+    String? Function(String?)? validator,
+  }) {
     return Padding(
       padding: const EdgeInsets.only(bottom: 10),
       child: TextFormField(
         controller: c,
         maxLines: lines,
+        keyboardType: keyboard,
         decoration: InputDecoration(
             labelText: label, prefixIcon: Icon(icon), isDense: true),
-        validator: required
-            ? (v) => (v == null || v.trim().isEmpty) ? 'Required' : null
-            : null,
+        validator: validator,
       ),
     );
   }

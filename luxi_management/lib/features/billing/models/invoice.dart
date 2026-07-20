@@ -3,12 +3,21 @@ import 'package:flutter/material.dart';
 import '../../../core/theme/app_colors.dart';
 
 enum PaymentMethod {
-  cash('Cash'),
-  gcash('GCash'),
-  card('Card');
+  cash('Cash', Icons.payments_rounded),
+  gcash('GCash', Icons.account_balance_wallet_rounded),
+  maya('Maya', Icons.account_balance_wallet_rounded),
+  creditCard('Credit Card', Icons.credit_card_rounded),
+  debitCard('Debit Card', Icons.credit_card_rounded),
+  bankTransfer('Bank Transfer', Icons.account_balance_rounded);
 
-  const PaymentMethod(this.label);
+  const PaymentMethod(this.label, this.icon);
   final String label;
+  final IconData icon;
+
+  /// Cash captures amount received + change; every other method captures a
+  /// reference / confirmation number instead.
+  bool get isCash => this == PaymentMethod.cash;
+  bool get requiresReference => !isCash;
 }
 
 /// How the client intends to settle the invoice (informational + UI hint).
@@ -65,6 +74,8 @@ class Invoice {
     required this.plan,
     this.packageId,
     this.dueDate,
+    this.appointmentDate,
+    this.appointmentTime,
     this.amountPaid = 0,
     this.voided = false,
   });
@@ -80,6 +91,12 @@ class Invoice {
   final PaymentPlan plan;
   final String? packageId;
   final DateTime? dueDate;
+
+  /// The original appointment this sale settles, if it came from completing
+  /// a treatment session (e.g. "10:30 AM") — null for a sale rung up directly
+  /// at POS with no appointment behind it.
+  final DateTime? appointmentDate;
+  final String? appointmentTime;
 
   /// Cached sum of payments (the payments list in the store is the audit log).
   double amountPaid;
@@ -113,6 +130,9 @@ class InvoicePayment {
     required this.date,
     required this.staffName,
     this.note = '',
+    this.reference = '',
+    this.amountReceived,
+    this.changeGiven,
   });
 
   final String id;
@@ -122,4 +142,11 @@ class InvoicePayment {
   final DateTime date;
   final String staffName;
   final String note;
+
+  /// Confirmation / reference number for non-cash methods.
+  final String reference;
+
+  /// Cash only — tendered amount and the change handed back.
+  final double? amountReceived;
+  final double? changeGiven;
 }

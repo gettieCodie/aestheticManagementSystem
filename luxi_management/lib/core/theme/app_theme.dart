@@ -70,6 +70,17 @@ abstract final class AppTheme {
           borderRadius: BorderRadius.circular(fieldRadius),
           borderSide: BorderSide(color: scheme.primary, width: 1.6),
         ),
+        // Without these a failed validation only showed red helper text; the
+        // field itself gave no signal.
+        errorBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(fieldRadius),
+          borderSide: BorderSide(color: scheme.error, width: 1.4),
+        ),
+        focusedErrorBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(fieldRadius),
+          borderSide: BorderSide(color: scheme.error, width: 1.6),
+        ),
+        errorStyle: TextStyle(fontSize: 11.5, color: scheme.error),
       ),
       filledButtonTheme: FilledButtonThemeData(
         style: FilledButton.styleFrom(
@@ -85,6 +96,51 @@ abstract final class AppTheme {
         thickness: 1,
       ),
       snackBarTheme: const SnackBarThemeData(behavior: SnackBarBehavior.floating),
+      // One push/pop animation everywhere, including on web and desktop where
+      // Flutter's defaults differ per platform.
+      pageTransitionsTheme: const PageTransitionsTheme(
+        builders: {
+          TargetPlatform.android: FadeSlidePageTransitionsBuilder(),
+          TargetPlatform.iOS: FadeSlidePageTransitionsBuilder(),
+          TargetPlatform.windows: FadeSlidePageTransitionsBuilder(),
+          TargetPlatform.macOS: FadeSlidePageTransitionsBuilder(),
+          TargetPlatform.linux: FadeSlidePageTransitionsBuilder(),
+          TargetPlatform.fuchsia: FadeSlidePageTransitionsBuilder(),
+        },
+      ),
+    );
+  }
+}
+
+/// Pushed routes fade in while sliding a short distance from the right, and
+/// reverse on pop. Deliberately subtle — this fires on every navigation, so a
+/// large slide starts to feel sluggish. Duration comes from the route itself.
+class FadeSlidePageTransitionsBuilder extends PageTransitionsBuilder {
+  const FadeSlidePageTransitionsBuilder();
+
+  @override
+  Widget buildTransitions<T>(
+    PageRoute<T> route,
+    BuildContext context,
+    Animation<double> animation,
+    Animation<double> secondaryAnimation,
+    Widget child,
+  ) {
+    final curved = CurvedAnimation(
+      parent: animation,
+      curve: Curves.easeOutCubic,
+      reverseCurve: Curves.easeInCubic,
+    );
+
+    return FadeTransition(
+      opacity: curved,
+      child: SlideTransition(
+        position: Tween<Offset>(
+          begin: const Offset(0.045, 0),
+          end: Offset.zero,
+        ).animate(curved),
+        child: child,
+      ),
     );
   }
 }

@@ -32,10 +32,17 @@ class PendingCheckout {
     required this.customerId,
     required this.customerName,
     required this.serviceName,
+    this.appointmentDate,
+    this.appointmentTime,
   });
   final String customerId;
   final String customerName;
   final String serviceName;
+
+  /// The completed appointment's original date/time, so the sale it settles
+  /// carries that alongside it.
+  final DateTime? appointmentDate;
+  final String? appointmentTime;
 }
 
 /// Store for staff data (clients, packages, sessions, appointments) — all
@@ -110,6 +117,11 @@ class StaffStore extends ChangeNotifier with FirestoreErrorTracker {
           memberSince: base.memberSince,
           notes: base.notes,
           isActive: base.isActive,
+          homeBranch: base.homeBranch,
+          visitBranches: {
+            for (final a in _appointments)
+              if (a.customerId == base.id) a.branch,
+          }.toList(),
           packages: [
             for (final row in _packageRows)
               if (row.customerId == base.id) row.package,
@@ -162,6 +174,7 @@ class StaffStore extends ChangeNotifier with FirestoreErrorTracker {
     String email = '',
     String facebook = '',
     String notes = '',
+    String? branch,
   }) {
     return _customersRepo.addCustomer(
       fullName: fullName,
@@ -169,6 +182,7 @@ class StaffStore extends ChangeNotifier with FirestoreErrorTracker {
       email: email,
       facebook: facebook,
       notes: notes,
+      branchShortName: branch,
     );
   }
 
@@ -363,9 +377,12 @@ class StaffStore extends ChangeNotifier with FirestoreErrorTracker {
   }
 
   // --- Follow-ups (incomplete packages) ----------------------------------
-  List<FollowUpItem> followUps() {
+  /// [branch] scopes results to a single branch (staff); `null` (admin)
+  /// returns every branch's follow-ups.
+  List<FollowUpItem> followUps({String? branch}) {
     final items = <FollowUpItem>[];
     for (final c in _customers) {
+      if (!c.visibleTo(branch)) continue;
       for (final p in c.packages) {
         if (p.sessionsLeft <= 0) continue;
         final open = _appointments

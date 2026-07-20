@@ -10,6 +10,16 @@ import '../models/client_info.dart';
 import '../models/service_category.dart';
 import '../models/service_model.dart';
 
+/// Thrown by [BookingDataService.createBooking] when the chosen slot filled
+/// up between the client picking it (Step 2) and confirming (Step 4) — the
+/// UI catches this and sends them back to pick another time.
+class SlotFullException implements Exception {
+  const SlotFullException();
+  @override
+  String toString() =>
+      'That time slot was just taken by someone else. Please pick another time.';
+}
+
 /// The single data seam for the booking flow — backed by Cloud Firestore
 /// (and Cloud Storage for the client photo upload).
 ///
@@ -147,6 +157,12 @@ class BookingDataService {
   /// [client]'s `photoPath`, if set, is expected to already be a Cloud
   /// Storage download URL (see [uploadClientPhoto]) — it's stored as-is in
   /// `progressPhotos`.
+  ///
+  /// The slot the client picked in Step 2 was checked against capacity at
+  /// that time, but Steps 3–4 (contact info, review) can take long enough for
+  /// someone else to fill it — or another client can be mid-checkout at the
+  /// exact same moment. So capacity is re-checked here, right before the
+  /// write, and [SlotFullException] is thrown if it's since filled up.
   Future<void> createBooking({
     required ServiceModel service,
     required BranchModel branch,
@@ -154,12 +170,6 @@ class BookingDataService {
     required TimeOfDay time,
     required ClientInfo client,
   }) async {
-    final customerId = await _findOrCreateCustomer(client);
-    final bookingId = await _nextSequentialId(
-      counterField: 'bookingSeq',
-      prefix: 'booking_',
-    );
-
     final appointmentDate =
         '${date.year.toString().padLeft(4, '0')}-'
         '${date.month.toString().padLeft(2, '0')}-'
@@ -169,6 +179,26 @@ class BookingDataService {
         '${time.minute.toString().padLeft(2, '0')}';
     final startAt =
         DateTime(date.year, date.month, date.day, time.hour, time.minute);
+
+    final existing = await _db
+        .collection('bookings')
+        .where('branchId', isEqualTo: branch.id)
+        .where('appointmentDate', isEqualTo: appointmentDate)
+        .where('appointmentTime', isEqualTo: appointmentTime)
+        .get();
+    final activeCount = existing.docs.where((doc) {
+      final status = doc.data()['status'] as String?;
+      return status != 'cancelled' && status != 'no_show';
+    }).length;
+    if (activeCount >= AppConstants.branchCapacity) {
+      throw const SlotFullException();
+    }
+
+    final customerId = await _findOrCreateCustomer(client);
+    final bookingId = await _nextSequentialId(
+      counterField: 'bookingSeq',
+      prefix: 'booking_',
+    );
 
     await _db.collection('bookings').doc(bookingId).set({
       'customerId': customerId,

@@ -14,11 +14,12 @@ abstract final class AppConstants {
   static const int closingHour = 16; // 4:00 PM
   static const int slotMinutes = 30;
 
-  // Concurrent appointments a branch can hold in one time slot, i.e. how many
-  // staff can each be treating a client at once. A slot is hidden from
-  // booking once it's full. Keep in sync with `kBranchCapacity` in
-  // luxi_management's scheduling_page.dart — same rule, same branches.
-  static const int branchCapacity = 2;
+  // Concurrent appointments a branch can hold in one time slot. One booking
+  // fully occupies a slot — a slot is hidden from booking as soon as it has
+  // one active (non-cancelled/no-show) booking. Keep in sync with
+  // `kBranchCapacity` in luxi_management's scheduling_page.dart — same rule,
+  // same branches.
+  static const int branchCapacity = 1;
 
   // Number of booking steps in the multi-step flow.
   static const int totalSteps = 4;

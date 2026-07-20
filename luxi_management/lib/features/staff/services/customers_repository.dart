@@ -37,6 +37,7 @@ class CustomersRepository {
   }
 
   Customer _customerFromDoc(String id, Map<String, dynamic> data) {
+    final branchId = data['branchId'] as String?;
     return Customer(
       id: id,
       clientId: data['clientId'] as String? ?? id,
@@ -48,6 +49,8 @@ class CustomersRepository {
           (data['memberSince'] as Timestamp?)?.toDate() ?? DateTime.now(),
       notes: data['notes'] as String? ?? '',
       isActive: data['isActive'] as bool? ?? true,
+      homeBranch:
+          branchId != null ? BranchLookup.shortNameById[branchId] : null,
     );
   }
 
@@ -84,9 +87,12 @@ class CustomersRepository {
     String email = '',
     String facebook = '',
     String notes = '',
+    String? branchShortName,
   }) async {
     final counterRef = _db.collection('meta').doc('counters');
     final memberSince = DateTime.now();
+    final branchId =
+        branchShortName == null ? null : BranchLookup.idByShortName[branchShortName];
     return _db.runTransaction<Customer>((tx) async {
       final snapshot = await tx.get(counterRef);
       final next = ((snapshot.data()?['customerSeq'] as num?)?.toInt() ?? 0) + 1;
@@ -101,6 +107,7 @@ class CustomersRepository {
         'phone': phone,
         'facebook': facebook,
         'notes': notes,
+        'branchId': branchId,
         'memberSince': Timestamp.fromDate(memberSince),
         'totalVisits': 0,
         'totalSpent': 0,
@@ -118,6 +125,7 @@ class CustomersRepository {
         facebook: facebook,
         notes: notes,
         memberSince: memberSince,
+        homeBranch: branchShortName,
       );
     });
   }
@@ -131,11 +139,11 @@ class CustomersRepository {
     String? notes,
   }) {
     final updates = <String, dynamic>{
-      if (fullName != null) 'fullName': fullName,
-      if (email != null) 'email': email,
-      if (phone != null) 'phone': phone,
-      if (facebook != null) 'facebook': facebook,
-      if (notes != null) 'notes': notes,
+      'fullName': ?fullName,
+      'email': ?email,
+      'phone': ?phone,
+      'facebook': ?facebook,
+      'notes': ?notes,
     };
     if (updates.isEmpty) return Future.value();
     updates['updatedAt'] = FieldValue.serverTimestamp();

@@ -63,10 +63,13 @@ class Customer {
     required this.memberSince,
     this.notes = '',
     this.isActive = true,
+    this.homeBranch,
     List<TreatmentPackage>? packages,
     List<SessionRecord>? sessions,
+    List<String>? visitBranches,
   })  : packages = packages ?? [],
-        sessions = sessions ?? [];
+        sessions = sessions ?? [],
+        visitBranches = visitBranches ?? [];
 
   final String id;
   final String clientId;
@@ -79,9 +82,25 @@ class Customer {
   String notes;
   bool isActive;
 
+  /// Branch the client was registered at (set when a staff member adds them
+  /// directly, so they don't vanish from that branch's records before their
+  /// first appointment/package exists). Null for clients who came in through
+  /// a booking with no explicit registering branch.
+  final String? homeBranch;
+
   final DateTime memberSince;
   final List<TreatmentPackage> packages;
   final List<SessionRecord> sessions;
+
+  /// Every branch this client has an appointment at (any status), derived
+  /// by [StaffStore] from the live bookings — a client can be treated at
+  /// more than one branch over time.
+  final List<String> visitBranches;
+
+  /// Whether this client's record should be visible to staff scoped to
+  /// [branch]. `null` (admin, or an unscoped view) always sees everyone.
+  bool visibleTo(String? branch) =>
+      branch == null || homeBranch == branch || visitBranches.contains(branch);
 
   int get activePackages => packages.where((p) => p.sessionsLeft > 0).length;
   int get visitCount => sessions.length;

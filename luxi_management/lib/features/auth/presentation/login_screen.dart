@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
+import '../../../core/utils/validators.dart';
+import '../../../core/widgets/app_toast.dart';
 import '../state/auth_controller.dart';
 
 /// Sign-in screen. On success, [AuthGate] redirects by role automatically.
@@ -35,12 +37,7 @@ class _LoginScreenState extends State<LoginScreen> {
     setState(() => _busy = false);
     if (!ok) {
       final err = context.read<AuthController>().error ?? 'Login failed.';
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(err),
-          backgroundColor: Theme.of(context).colorScheme.error,
-        ),
-      );
+      AppToast.error(context, err);
     }
   }
 
@@ -94,8 +91,10 @@ class _LoginScreenState extends State<LoginScreen> {
                             prefixIcon: Icon(Icons.person_outline),
                           ),
                           textInputAction: TextInputAction.next,
-                          validator: (v) =>
-                              (v == null || v.trim().isEmpty) ? 'Enter your username' : null,
+                          autofillHints: const [AutofillHints.username],
+                          validator: (v) => (v == null || v.trim().isEmpty)
+                              ? 'Enter your username'
+                              : null,
                         ),
                         const SizedBox(height: 14),
                         TextFormField(
@@ -112,8 +111,13 @@ class _LoginScreenState extends State<LoginScreen> {
                             ),
                           ),
                           onFieldSubmitted: (_) => _submit(),
-                          validator: (v) =>
-                              (v == null || v.isEmpty) ? 'Enter your password' : null,
+                          autofillHints: const [AutofillHints.password],
+                          // Length is enforced when the account is created,
+                          // not here — an existing short password must still
+                          // be able to sign in.
+                          validator: (v) => (v == null || v.isEmpty)
+                              ? 'Enter your password'
+                              : null,
                         ),
                         const SizedBox(height: 20),
                         SizedBox(

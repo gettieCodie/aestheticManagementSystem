@@ -16,20 +16,31 @@ import '../features/staff/presentation/pages/scheduling_page.dart';
 import 'dashboard_shell.dart';
 
 /// Admin-only navigation — system management features.
+///
+/// The first five appear in the phone's bottom bar (with [shortLabel]); the
+/// rest are reached from the drawer, so the most-used items come first.
 const List<NavItem> _adminNav = [
-  NavItem('Dashboard', Icons.dashboard_rounded, DashboardPage()),
-  NavItem('User Management', Icons.manage_accounts_rounded, UserManagementPage()),
-  NavItem('Inventory', Icons.inventory_2_rounded, InventoryPage()),
-  NavItem('Sales & Reports', Icons.receipt_long_rounded, SalesHistoryPage()),
-  NavItem('POS Config', Icons.tune_rounded, PosConfigPage()),
+  NavItem('Dashboard', Icons.dashboard_rounded, DashboardPage(),
+      shortLabel: 'Home'),
+  NavItem('Inventory', Icons.inventory_2_rounded, InventoryPage(),
+      shortLabel: 'Stock'),
+  NavItem('Sales & Reports', Icons.receipt_long_rounded, SalesHistoryPage(),
+      shortLabel: 'Sales'),
+  NavItem('POS Config', Icons.tune_rounded, PosConfigPage(),
+      shortLabel: 'Config'),
+  NavItem('User Management', Icons.manage_accounts_rounded,
+      UserManagementPage(),
+      shortLabel: 'Users'),
   NavItem('Settings', Icons.settings_rounded, SettingsPage()),
 ];
 
 /// Staff-only navigation — no administrative features exposed.
 const List<NavItem> _staffNav = [
   NavItem('POS', Icons.point_of_sale_rounded, PosPage()),
-  NavItem('Appointments', Icons.calendar_month_rounded, SchedulingPage()),
-  NavItem('Client Records', Icons.people_alt_rounded, ClientRecordsPage()),
+  NavItem('Appointments', Icons.calendar_month_rounded, SchedulingPage(),
+      shortLabel: 'Schedule'),
+  NavItem('Client Records', Icons.people_alt_rounded, ClientRecordsPage(),
+      shortLabel: 'Clients'),
 ];
 
 /// Routes the user to the correct experience based on auth + role (RBAC):

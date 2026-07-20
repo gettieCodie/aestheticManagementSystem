@@ -1,0 +1,71 @@
+FIREBASE FIRESTORE — PROJECT OVERVIEW
+======================================
+
+PROJECT
+-------
+Name / ID:  luxuriskin-aesthetic-clinic
+Database:   Cloud Firestore (NoSQL, document-based)
+Plan:       Spark (free tier). Cloud Storage is not yet enabled — that
+            requires upgrading to the Blaze plan, so image/photo uploads
+            do not work yet.
+
+One Firestore project is shared by two separate Flutter apps:
+  1. luxi_appointment  — public booking site, no login. Customers pick a
+     service, branch, date/time and submit their contact info; this writes
+     directly into the same "bookings" and "customers" collections the
+     staff app reads from.
+  2. luxi_management   — the staff & admin dashboard. Staff manage
+     appointments, clients, and point-of-sale; admin manages inventory,
+     services, promo packages, staff accounts, and sales reports.
+
+Sign-in in luxi_management is currently a lightweight custom check against
+the "users" collection (plus a few built-in demo accounts) — it is not yet
+wired to real Firebase Authentication.
+
+COLLECTIONS IN USE
+-------------------
+users            Staff & admin accounts (name, role, branch, active flag).
+branches         Clinic locations (name, address, capacity). Read by the
+                 booking app; the staff app currently uses a fixed
+                 short-list of branches instead of reading this live.
+services         Bookable treatments and their prices (admin-configured).
+products         Retail/consumable inventory catalog (admin-configured).
+stock            Current on-hand quantity per product, per branch.
+stock_movements  Audit trail of every stock change (restock, sale, use,
+                 transfer, adjustment).
+customers        Client records (name, contact info, notes) — matched to
+                 returning clients by phone.
+packages         A treatment package a client purchased (sessions,
+                 price, amount paid, balance).
+promoPackages    Admin-configured catalog of fixed-price promo packages.
+bookings         The appointment calendar — every walk-in appointment and
+                 every auto-generated package session lives here. When a
+                 session is completed, the treatment notes/products/photos
+                 are saved on this same document.
+sales            Point-of-sale transactions (line items, totals, discount,
+                 payment plan, balance).
+payments         Individual payments recorded against a sale/package —
+                 what makes installment tracking possible.
+settings         One global config document (promo discount rate, enabled
+                 payment methods).
+meta             One document ("counters") that hands out sequential IDs
+                 (booking_01, customer_01, etc.) shared by both apps.
+
+WHY ONE PROJECT, TWO APPS
+--------------------------
+Sharing one Firestore project means a client's online booking shows up
+live on the staff dashboard with no sync step, and a walk-in client added
+by staff is visible if that same client ever books online — both apps are
+just different views onto the same "bookings" and "customers" data.
+
+KNOWN GAPS (as of this write-up)
+----------------------------------
+- Firebase Storage is not enabled, so profile photos and treatment
+  progress photos cannot upload yet (needs the Blaze plan).
+- Firestore Security Rules have not been written yet — right now any
+  authenticated or unauthenticated client can read/write per the Firebase
+  console's default rules, not the branch-locked staff / full-access admin
+  model the app is designed around.
+- "branches", "services", and "promoPackages" are meant to be fully
+  admin-editable collections, but not every screen reads them live yet —
+  some branch/service lists are still hardcoded in the app for now.
