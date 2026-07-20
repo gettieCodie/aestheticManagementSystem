@@ -9,6 +9,7 @@ import '../../state/admin_store.dart';
 import '../widgets/section_card.dart';
 import 'page_scaffold.dart';
 import '../../../../core/widgets/app_toast.dart';
+import '../../../../core/widgets/empty_state.dart';
 
 /// POS Configuration — manage services & pricing, promo discount, payment methods.
 class PosConfigPage extends StatelessWidget {
@@ -35,9 +36,10 @@ class PosConfigPage extends StatelessWidget {
               for (final service in store.services)
                 _ServiceTile(service: service),
               if (store.services.isEmpty)
-                const Padding(
-                  padding: EdgeInsets.all(20),
-                  child: Text('No services yet. Add your first one.'),
+                const EmptyState(
+                  icon: Icons.design_services_outlined,
+                  title: 'No services yet',
+                  message: 'Add your first one to get started.',
                 ),
             ],
           ),

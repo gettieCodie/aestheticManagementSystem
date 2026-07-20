@@ -129,7 +129,12 @@ class _PosPageState extends State<PosPage> {
           unitPrice: _baseAmount));
     }
     for (final p in admin.products.where((p) => _aftercare.contains(p.id))) {
-      items.add(InvoiceLineItem(name: p.name, type: 'product', quantity: 1, unitPrice: p.price));
+      items.add(InvoiceLineItem(
+          name: p.name,
+          type: 'product',
+          quantity: 1,
+          unitPrice: p.price,
+          productId: p.id));
     }
     return items;
   }
@@ -166,7 +171,7 @@ class _PosPageState extends State<PosPage> {
       total: total,
       payingNow: payingNow,
       balanceAfter: (total - payingNow).clamp(0, double.infinity).toDouble(),
-      ready: _customerId != null && _baseAmount > 0,
+      ready: _customerId != null && subtotal > 0,
     );
   }
 
@@ -304,7 +309,7 @@ class _PosPageState extends State<PosPage> {
           icon: Icons.sell_rounded,
           child: _sellContent(admin),
         ),
-        if (_saleType == _SaleType.package) ...[
+        if (_saleType == _SaleType.package && _baseAmount > 0) ...[
           const SizedBox(height: 16),
           _stepCard(
             step: 3,
@@ -315,7 +320,7 @@ class _PosPageState extends State<PosPage> {
         ],
         const SizedBox(height: 16),
         _stepCard(
-          step: _saleType == _SaleType.package ? 4 : 3,
+          step: _saleType == _SaleType.package && _baseAmount > 0 ? 4 : 3,
           title: 'Add aftercare products',
           icon: Icons.shopping_bag_rounded,
           optional: true,
@@ -717,8 +722,15 @@ class _PosPageState extends State<PosPage> {
           if (items.isEmpty)
             Padding(
               padding: const EdgeInsets.symmetric(vertical: 12),
-              child: Text('Nothing added yet.',
-                  style: TextStyle(color: scheme.onSurfaceVariant)),
+              child: Row(
+                children: [
+                  Icon(Icons.shopping_cart_outlined,
+                      size: 18, color: scheme.onSurfaceVariant),
+                  const SizedBox(width: 8),
+                  Text('Nothing added yet.',
+                      style: TextStyle(color: scheme.onSurfaceVariant)),
+                ],
+              ),
             )
           else
             for (final i in items)
@@ -968,7 +980,7 @@ class _PosPageState extends State<PosPage> {
       AppToast.error(context, 'Discount cannot exceed 100%.');
       return;
     }
-    if (_saleType == _SaleType.package && _sessions <= 0) {
+    if (_saleType == _SaleType.package && _baseAmount > 0 && _sessions <= 0) {
       AppToast.error(context, 'Set how many sessions this package includes.');
       return;
     }
@@ -1031,7 +1043,7 @@ class _PosPageState extends State<PosPage> {
       appointmentTime: _appointmentTime,
     );
 
-    if (isPackage) {
+    if (isPackage && _baseAmount > 0) {
       await staff.createPackage(
         customerId: customer.id,
         packageName: _saleName,
@@ -1043,6 +1055,23 @@ class _PosPageState extends State<PosPage> {
         defaultTime: kTimeSlots.first,
         sessionIntervalDays: int.tryParse(_interval.text) ?? 7,
         invoiceId: invoice.id,
+      );
+    }
+
+    // Every product line item sold deducts from that branch's stock and
+    // writes a matching entry to the movement ledger, keeping inventory in
+    // sync with sales instead of drifting until someone corrects it by hand.
+    for (final item in items) {
+      if (item.type != 'product' || item.productId == null) continue;
+      final product = admin.productById(item.productId!);
+      if (product == null) continue;
+      await admin.adjustStock(
+        product: product,
+        branch: _branch,
+        delta: -item.quantity,
+        reason: 'POS sale',
+        staffName: staffName,
+        remarks: 'Invoice ${invoice.id}',
       );
     }
 
@@ -1150,8 +1179,17 @@ class _PosPageState extends State<PosPage> {
       title: 'Open Balances (${open.length})',
       icon: Icons.account_balance_wallet_rounded,
       child: open.isEmpty
-          ? Text('No outstanding balances — everyone is paid up.',
-              style: TextStyle(color: scheme.onSurfaceVariant))
+          ? Row(
+              children: [
+                Icon(Icons.check_circle_outline,
+                    size: 18, color: scheme.onSurfaceVariant),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text('No outstanding balances — everyone is paid up.',
+                      style: TextStyle(color: scheme.onSurfaceVariant)),
+                ),
+              ],
+            )
           : Column(children: [for (final inv in open) _openInvoiceRow(context, inv)]),
     );
   }

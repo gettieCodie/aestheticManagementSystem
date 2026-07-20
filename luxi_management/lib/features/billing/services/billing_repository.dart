@@ -69,6 +69,7 @@ class BillingRepository {
               type: m['type'] as String? ?? 'service',
               quantity: (m['quantity'] as num?)?.toInt() ?? 1,
               unitPrice: (m['unitPrice'] as num?)?.toDouble() ?? 0,
+              productId: m['productId'] as String?,
             ))
         .toList();
     final branchId = data['branchId'] as String?;
@@ -146,6 +147,7 @@ class BillingRepository {
             'quantity': i.quantity,
             'unitPrice': i.unitPrice,
             'lineTotal': i.lineTotal,
+            'productId': ?i.productId,
           },
       ],
       'subtotal': subtotal,

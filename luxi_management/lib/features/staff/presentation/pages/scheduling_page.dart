@@ -6,6 +6,7 @@ import '../../../../core/utils/formatters.dart';
 import '../../../../core/utils/responsive.dart';
 import '../../../../core/utils/validators.dart';
 import '../../../../core/widgets/app_toast.dart';
+import '../../../../core/widgets/empty_state.dart';
 import '../../../../app/nav_controller.dart';
 import '../../../admin/models/product.dart' show kBranches;
 import '../../../admin/models/service_config.dart';
@@ -140,10 +141,9 @@ class _SchedulingPageState extends State<SchedulingPage> {
         ),
         const SizedBox(height: 12),
         if (visible.isEmpty)
-          Padding(
-            padding: const EdgeInsets.all(24),
-            child: Text('No appointments for this day.',
-                style: TextStyle(color: scheme.onSurfaceVariant)),
+          const EmptyState(
+            icon: Icons.event_busy_outlined,
+            title: 'No appointments for this day',
           ),
         for (final a in visible) _AppointmentCard(appointment: a),
       ],
@@ -163,8 +163,15 @@ class _SchedulingPageState extends State<SchedulingPage> {
       title: 'Follow-Up Required',
       icon: Icons.notifications_active_rounded,
       child: items.isEmpty
-          ? Text('No incomplete packages. ',
-              style: TextStyle(color: scheme.onSurfaceVariant))
+          ? Row(
+              children: [
+                Icon(Icons.check_circle_outline,
+                    size: 18, color: scheme.onSurfaceVariant),
+                const SizedBox(width: 8),
+                Text('No incomplete packages.',
+                    style: TextStyle(color: scheme.onSurfaceVariant)),
+              ],
+            )
           : Column(
               children: [
                 for (final item in items) _FollowUpRow(item: item),

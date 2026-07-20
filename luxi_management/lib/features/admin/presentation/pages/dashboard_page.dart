@@ -65,7 +65,18 @@ class DashboardPage extends StatelessWidget {
           title: 'Needs Restock',
           icon: Icons.warning_amber_rounded,
           child: lowStock.isEmpty
-              ? const Text('All products are well stocked.')
+              ? Row(
+                  children: [
+                    Icon(Icons.check_circle_outline,
+                        size: 18,
+                        color: Theme.of(context).colorScheme.onSurfaceVariant),
+                    const SizedBox(width: 8),
+                    Text('All products are well stocked.',
+                        style: TextStyle(
+                            color:
+                                Theme.of(context).colorScheme.onSurfaceVariant)),
+                  ],
+                )
               : Column(
                   children: [
                     for (final p in lowStock)

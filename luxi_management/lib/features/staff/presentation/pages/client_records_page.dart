@@ -5,6 +5,7 @@ import '../../../../core/utils/formatters.dart';
 import '../../../../core/utils/responsive.dart';
 import '../../../../core/utils/validators.dart';
 import '../../../../core/widgets/app_toast.dart';
+import '../../../../core/widgets/empty_state.dart';
 import '../../../admin/presentation/pages/page_scaffold.dart';
 import '../../../admin/presentation/widgets/section_card.dart';
 import '../../../admin/presentation/widgets/stat_card.dart';
@@ -123,10 +124,9 @@ class _ClientRecordsPageState extends State<ClientRecordsPage> {
         _toolbar(context),
         const SizedBox(height: 12),
         if (list.isEmpty)
-          Padding(
-            padding: const EdgeInsets.all(24),
-            child: Text('No clients match your search.',
-                style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant)),
+          const EmptyState(
+            icon: Icons.search_off_rounded,
+            title: 'No clients match your search',
           )
         else
           Padding(
@@ -447,6 +447,20 @@ class _ClientCard extends StatelessWidget {
           style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: color)),
     );
   }
+
+}
+
+Widget _inlineEmptyRow(ColorScheme scheme, IconData icon, String text) {
+  return Padding(
+    padding: const EdgeInsets.symmetric(vertical: 8),
+    child: Row(
+      children: [
+        Icon(icon, size: 18, color: scheme.onSurfaceVariant),
+        const SizedBox(width: 8),
+        Text(text, style: TextStyle(color: scheme.onSurfaceVariant)),
+      ],
+    ),
+  );
 }
 
 /// Add or edit a client.
@@ -635,8 +649,8 @@ class ClientDetailPage extends StatelessWidget {
                               : billing.invoiceById(p.invoiceId!),
                         ),
                       if (customer.packages.isEmpty)
-                        Text('No packages yet.',
-                            style: TextStyle(color: scheme.onSurfaceVariant)),
+                        _inlineEmptyRow(
+                            scheme, Icons.card_giftcard_outlined, 'No packages yet.'),
                     ],
                   ),
                 ),
@@ -659,8 +673,8 @@ class ClientDetailPage extends StatelessWidget {
                     children: [
                       for (final s in customer.sessions) _SessionTile(session: s),
                       if (customer.sessions.isEmpty)
-                        Text('No sessions logged yet.',
-                            style: TextStyle(color: scheme.onSurfaceVariant)),
+                        _inlineEmptyRow(
+                            scheme, Icons.fact_check_outlined, 'No sessions logged yet.'),
                     ],
                   ),
                 ),

@@ -5,6 +5,7 @@ import 'package:provider/provider.dart';
 import '../../../../core/utils/formatters.dart';
 import '../../../../core/utils/validators.dart';
 import '../../../../core/widgets/app_toast.dart';
+import '../../../../core/widgets/empty_state.dart';
 import '../../../auth/state/auth_controller.dart';
 import '../../models/product.dart';
 import '../../models/stock_movement.dart';
@@ -238,10 +239,20 @@ class InventoryMobilePage extends StatelessWidget {
         ),
         const SizedBox(height: 6),
         if (needs.isEmpty)
-          Padding(
-            padding: const EdgeInsets.symmetric(vertical: 20),
-            child: Text('Everything is well stocked.',
-                style: TextStyle(color: scheme.onSurfaceVariant)),
+          Container(
+            width: double.infinity,
+            padding: const EdgeInsets.symmetric(vertical: 20, horizontal: 16),
+            decoration: _cardDecoration(scheme),
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Icon(Icons.check_circle_outline,
+                    size: 20, color: scheme.onSurfaceVariant),
+                const SizedBox(width: 8),
+                Text('Everything is well stocked.',
+                    style: TextStyle(color: scheme.onSurfaceVariant)),
+              ],
+            ),
           ),
         for (final p in needs.take(3))
           Padding(
@@ -1755,7 +1766,6 @@ class LowStockAlertsPage extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final admin = context.watch<AdminStore>();
-    final scheme = Theme.of(context).colorScheme;
 
     final needs = admin.needsReplenishment;
     final expiring = admin.products
@@ -1769,12 +1779,11 @@ class LowStockAlertsPage extends StatelessWidget {
           ? 'Nothing needs attention'
           : '$total product(s) need attention',
       child: total == 0
-          ? Center(
-              child: Padding(
-                padding: const EdgeInsets.all(32),
-                child: Text('Every product is above its reorder level.',
-                    textAlign: TextAlign.center,
-                    style: TextStyle(color: scheme.onSurfaceVariant)),
+          ? const Center(
+              child: EmptyState(
+                icon: Icons.check_circle_outline,
+                title: 'All stocked up',
+                message: 'Every product is above its reorder level.',
               ),
             )
           : ListView(

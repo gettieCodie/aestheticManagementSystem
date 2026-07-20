@@ -50,12 +50,17 @@ class InvoiceLineItem {
     required this.type, // 'package' | 'service' | 'product'
     required this.quantity,
     required this.unitPrice,
+    this.productId,
   });
 
   final String name;
   final String type;
   final int quantity;
   final double unitPrice;
+
+  /// Set only for `type == 'product'` — links this line back to the
+  /// [Product] whose stock the sale should deduct.
+  final String? productId;
 
   double get lineTotal => quantity * unitPrice;
 }

@@ -4,6 +4,7 @@ import 'package:provider/provider.dart';
 import '../../../../core/constants/app_spacing.dart';
 import '../../../../core/utils/formatters.dart';
 import '../../../../core/utils/responsive.dart';
+import '../../../../core/widgets/empty_state.dart';
 import '../../../billing/models/invoice.dart';
 import '../../../billing/presentation/record_payment_dialog.dart';
 import '../../../billing/state/billing_store.dart';
@@ -153,9 +154,10 @@ class _SalesHistoryPageState extends State<SalesHistoryPage> {
               ? Column(
                   children: [
                     if (filtered.isEmpty)
-                      Text('No invoices match these filters.',
-                          style: TextStyle(
-                              color: Theme.of(context).colorScheme.onSurfaceVariant))
+                      const EmptyState(
+                        icon: Icons.filter_alt_off_outlined,
+                        title: 'No invoices match these filters',
+                      )
                     else
                       Padding(
                         padding: const EdgeInsets.only(bottom: 10),
@@ -587,9 +589,16 @@ class InvoiceDetailSheet extends StatelessWidget {
               if (payments.isEmpty)
                 Padding(
                   padding: const EdgeInsets.symmetric(vertical: 6),
-                  child: Text('No payments recorded yet.',
-                      style: TextStyle(
-                          fontSize: 13, color: scheme.onSurfaceVariant)),
+                  child: Row(
+                    children: [
+                      Icon(Icons.payments_outlined,
+                          size: 16, color: scheme.onSurfaceVariant),
+                      const SizedBox(width: 8),
+                      Text('No payments recorded yet.',
+                          style: TextStyle(
+                              fontSize: 13, color: scheme.onSurfaceVariant)),
+                    ],
+                  ),
                 ),
               for (final p in payments)
                 Padding(

@@ -237,7 +237,18 @@ class PaymentHistorySheet extends StatelessWidget {
               ),
             const SizedBox(height: 12),
             if (payments.isEmpty)
-              const Text('No payments yet.')
+              Padding(
+                padding: const EdgeInsets.symmetric(vertical: 8),
+                child: Row(
+                  children: [
+                    Icon(Icons.payments_outlined,
+                        size: 18, color: scheme.onSurfaceVariant),
+                    const SizedBox(width: 8),
+                    Text('No payments yet.',
+                        style: TextStyle(color: scheme.onSurfaceVariant)),
+                  ],
+                ),
+              )
             else
               ...payments.map((p) => Padding(
                     padding: const EdgeInsets.symmetric(vertical: 6),

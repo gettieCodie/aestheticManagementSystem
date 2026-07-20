@@ -5,6 +5,7 @@ import 'package:provider/provider.dart';
 import '../../../../core/constants/app_spacing.dart';
 import '../../../../core/utils/formatters.dart';
 import '../../../../core/utils/responsive.dart';
+import '../../../../core/widgets/empty_state.dart';
 import '../../../auth/state/auth_controller.dart';
 import '../../models/product.dart';
 import '../../models/stock_movement.dart';
@@ -179,16 +180,16 @@ class _InventoryPageState extends State<InventoryPage> {
             label: const Text('Add Product'),
           ),
           child: products.isEmpty
-              ? Padding(
-                  padding: const EdgeInsets.symmetric(vertical: 24),
-                  child: Text(
-                    all.isEmpty
-                        ? 'No products yet. Add your first one.'
-                        : 'No products match these filters.',
-                    style: TextStyle(
-                        color: Theme.of(context).colorScheme.onSurfaceVariant),
-                  ),
-                )
+              ? (all.isEmpty
+                  ? const EmptyState(
+                      icon: Icons.inventory_2_outlined,
+                      title: 'No products yet',
+                      message: 'Add your first one to get started.',
+                    )
+                  : const EmptyState(
+                      icon: Icons.search_off_rounded,
+                      title: 'No products match these filters',
+                    ))
               : SingleChildScrollView(
                   scrollDirection: Axis.horizontal,
                   child: DataTable(
