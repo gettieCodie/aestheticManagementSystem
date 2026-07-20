@@ -31,10 +31,16 @@ class BillingRepository {
   static const Map<PaymentMethod, String> _methodOut = {
     PaymentMethod.cash: 'cash',
     PaymentMethod.gcash: 'gcash',
-    PaymentMethod.card: 'card',
+    PaymentMethod.maya: 'maya',
+    PaymentMethod.creditCard: 'credit_card',
+    PaymentMethod.debitCard: 'debit_card',
+    PaymentMethod.bankTransfer: 'bank_transfer',
   };
   static final Map<String, PaymentMethod> _methodIn = {
     for (final e in _methodOut.entries) e.value: e.key,
+    // Legacy value written before card types were split — keeps older
+    // payment docs readable.
+    'card': PaymentMethod.creditCard,
   };
 
   Stream<List<Invoice>> watchInvoices() {
@@ -94,6 +100,9 @@ class BillingRepository {
       date: (data['createdAt'] as Timestamp?)?.toDate() ?? DateTime.now(),
       staffName: data['staffName'] as String? ?? '',
       note: data['note'] as String? ?? '',
+      reference: data['reference'] as String? ?? '',
+      amountReceived: (data['amountReceived'] as num?)?.toDouble(),
+      changeGiven: (data['changeGiven'] as num?)?.toDouble(),
     );
   }
 
@@ -170,6 +179,9 @@ class BillingRepository {
     required PaymentMethod method,
     required String staffName,
     String note = '',
+    String reference = '',
+    double? amountReceived,
+    double? changeGiven,
   }) async {
     if (amount <= 0) return null;
     final id = await _ids.next(
@@ -196,6 +208,9 @@ class BillingRepository {
         'paymentMethod': _methodOut[method],
         'staffName': staffName,
         'note': note,
+        'reference': reference,
+        if (amountReceived != null) 'amountReceived': amountReceived,
+        if (changeGiven != null) 'changeGiven': changeGiven,
         'createdAt': Timestamp.fromDate(date),
       });
       tx.update(saleRef, {
@@ -214,6 +229,9 @@ class BillingRepository {
       date: date,
       staffName: staffName,
       note: note,
+      reference: reference,
+      amountReceived: amountReceived,
+      changeGiven: changeGiven,
     );
   }
 

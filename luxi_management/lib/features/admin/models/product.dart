@@ -30,6 +30,9 @@ class Product {
     required this.reorderLevel,
     required this.criticalLevel,
     required this.branchStock,
+    this.brand = '',
+    this.expiryDate,
+    this.createdAt,
   });
 
   final String id;
@@ -42,6 +45,24 @@ class Product {
   final double cost;
   final int reorderLevel;
   final int criticalLevel;
+
+  /// Optional catalog details. Both default to empty/null so products created
+  /// before these fields existed keep loading unchanged.
+  final String brand;
+  final DateTime? expiryDate;
+
+  /// When the product was first created (used for "Sort by Date Added").
+  final DateTime? createdAt;
+
+  /// Within [days] of expiring (and not already expired long ago).
+  bool expiringWithin(int days) {
+    final d = expiryDate;
+    if (d == null) return false;
+    final diff = d.difference(DateTime.now()).inDays;
+    return diff <= days;
+  }
+
+  bool get isExpiringSoon => expiringWithin(60);
 
   /// branch name → quantity on hand.
   final Map<String, int> branchStock;
@@ -70,6 +91,8 @@ class Product {
     int? reorderLevel,
     int? criticalLevel,
     Map<String, int>? branchStock,
+    String? brand,
+    DateTime? expiryDate,
   }) {
     return Product(
       id: id,
@@ -83,6 +106,8 @@ class Product {
       reorderLevel: reorderLevel ?? this.reorderLevel,
       criticalLevel: criticalLevel ?? this.criticalLevel,
       branchStock: branchStock ?? this.branchStock,
+      brand: brand ?? this.brand,
+      expiryDate: expiryDate ?? this.expiryDate,
     );
   }
 }

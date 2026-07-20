@@ -8,6 +8,7 @@ import '../../models/service_config.dart';
 import '../../state/admin_store.dart';
 import '../widgets/section_card.dart';
 import 'page_scaffold.dart';
+import '../../../../core/widgets/app_toast.dart';
 
 /// POS Configuration — manage services & pricing, promo discount, payment methods.
 class PosConfigPage extends StatelessWidget {
@@ -66,14 +67,20 @@ class PosConfigPage extends StatelessWidget {
         ),
         const SizedBox(height: AppSpacing.lg),
         Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Icon(Icons.cloud_done_outlined,
                 size: 18, color: Theme.of(context).colorScheme.onSurfaceVariant),
             const SizedBox(width: 8),
-            Text(
-              'Every change above is saved to Firestore and synced to all branches automatically.',
-              style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                  color: Theme.of(context).colorScheme.onSurfaceVariant),
+            // Expanded so the sentence wraps instead of overflowing the row
+            // on a narrow screen.
+            Expanded(
+              child: Text(
+                'Every change above is saved to Firestore and synced to all '
+                'branches automatically.',
+                style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                    color: Theme.of(context).colorScheme.onSurfaceVariant),
+              ),
             ),
           ],
         ),
@@ -169,9 +176,7 @@ class _ServiceTile extends StatelessWidget {
     try {
       await context.read<AdminStore>().deleteService(service.id);
     } catch (e) {
-      messenger.showSnackBar(
-        SnackBar(content: Text('Could not delete service: $e')),
-      );
+      AppToast.errorOn(messenger, 'Could not delete service: $e');
     }
   }
 
@@ -285,9 +290,7 @@ class _ServiceDialogState extends State<_ServiceDialog> {
       }
       navigator.pop();
     } catch (e) {
-      messenger.showSnackBar(
-        SnackBar(content: Text('Could not save service: $e')),
-      );
+      AppToast.errorOn(messenger, 'Could not save service: $e');
     }
   }
 

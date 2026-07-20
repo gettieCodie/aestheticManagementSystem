@@ -1,12 +1,14 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
+import '../../../../core/utils/validators.dart';
 import '../../../../core/widgets/notice_banner.dart';
 import '../../../auth/models/app_user.dart';
 import '../../../auth/state/auth_controller.dart';
 import '../../models/product.dart' show kBranches;
 import '../widgets/section_card.dart';
 import 'page_scaffold.dart';
+import '../../../../core/widgets/app_toast.dart';
 
 /// Admin-only: manage individual staff/admin accounts (no shared accounts).
 ///
@@ -88,9 +90,7 @@ class UserManagementPage extends StatelessWidget {
                 try {
                   await context.read<AuthController>().toggleActive(u.id);
                 } catch (e) {
-                  messenger.showSnackBar(
-                    SnackBar(content: Text('Could not update account: $e')),
-                  );
+                  AppToast.errorOn(messenger, 'Could not update account: $e');
                 }
               },
               child: Text(u.isActive ? 'Deactivate' : 'Activate'),
@@ -123,10 +123,19 @@ class _AddUserDialogState extends State<_AddUserDialog> {
   }
 
   Future<void> _save() async {
-    if (!(_formKey.currentState?.validate() ?? false)) return;
-    final auth = context.read<AuthController>();
-    final navigator = Navigator.of(context);
     final messenger = ScaffoldMessenger.of(context);
+    if (!(_formKey.currentState?.validate() ?? false)) {
+      AppToast.errorOn(messenger, 'Please fix the highlighted fields.');
+      return;
+    }
+    final auth = context.read<AuthController>();
+    // Usernames must be unique — the login lookup matches on this field.
+    if (auth.users.any((u) =>
+        u.username.toLowerCase() == _username.text.trim().toLowerCase())) {
+      AppToast.errorOn(messenger, 'That username is already taken.');
+      return;
+    }
+    final navigator = Navigator.of(context);
     try {
       await auth.addUser(AppUser(
         id: auth.newUserId(),
@@ -138,10 +147,10 @@ class _AddUserDialogState extends State<_AddUserDialog> {
         branch: _role == UserRole.staff ? _branch : null,
       ));
       navigator.pop();
+      AppToast.successOn(
+          messenger, '${_name.text.trim()} can now sign in.');
     } catch (e) {
-      messenger.showSnackBar(
-        SnackBar(content: Text('Could not create user: $e')),
-      );
+      AppToast.errorOn(messenger, 'Could not create user: $e');
     }
   }
 
@@ -157,9 +166,15 @@ class _AddUserDialogState extends State<_AddUserDialog> {
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              _field(_name, 'Full name', required: true),
-              _field(_username, 'Username', required: true),
-              _field(_password, 'Temporary password', required: true),
+              _field(_name, 'Full name',
+                  validator: Validate.all(
+                      [Validate.required, Validate.minLength(2)])),
+              _field(_username, 'Username',
+                  validator: Validate.all(
+                      [Validate.required, Validate.minLength(4)])),
+              _field(_password, 'Temporary password',
+                  validator: Validate.all(
+                      [Validate.required, Validate.minLength(6)])),
               const SizedBox(height: 12),
               InputDecorator(
                 decoration: const InputDecoration(labelText: 'Role', isDense: true),
@@ -205,15 +220,14 @@ class _AddUserDialogState extends State<_AddUserDialog> {
     );
   }
 
-  Widget _field(TextEditingController c, String label, {bool required = false}) {
+  Widget _field(TextEditingController c, String label,
+      {String? Function(String?)? validator}) {
     return Padding(
       padding: const EdgeInsets.only(bottom: 10),
       child: TextFormField(
         controller: c,
         decoration: InputDecoration(labelText: label, isDense: true),
-        validator: required
-            ? (v) => (v == null || v.trim().isEmpty) ? 'Required' : null
-            : null,
+        validator: validator,
       ),
     );
   }

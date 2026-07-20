@@ -31,6 +31,9 @@ class DashboardShell extends StatefulWidget {
 }
 
 class _DashboardShellState extends State<DashboardShell> {
+  /// Lets the bottom bar's "More" destination open the drawer.
+  final _scaffoldKey = GlobalKey<ScaffoldState>();
+
   void _select(int i) => context.read<NavController>().select(i);
 
   @override
@@ -38,12 +41,47 @@ class _DashboardShellState extends State<DashboardShell> {
     // Index lives in NavController so pages can switch tabs programmatically.
     final rawIndex = context.watch<NavController>().index;
     final index = rawIndex < widget.navItems.length ? rawIndex : 0;
-    final body = widget.navItems[index].page;
+
+    // Cross-fade with a small upward drift when switching destinations. Keyed
+    // by index so the switcher knows the child actually changed.
+    final body = AnimatedSwitcher(
+      duration: const Duration(milliseconds: 240),
+      switchInCurve: Curves.easeOutCubic,
+      switchOutCurve: Curves.easeIn,
+      transitionBuilder: (child, animation) => FadeTransition(
+        opacity: animation,
+        child: SlideTransition(
+          position: Tween<Offset>(
+            begin: const Offset(0, 0.02),
+            end: Offset.zero,
+          ).animate(animation),
+          child: child,
+        ),
+      ),
+      // The outgoing page is removed immediately rather than cross-faded on
+      // top of the new one, which otherwise doubles scrollbars mid-transition.
+      layoutBuilder: (current, previous) => Stack(
+        alignment: Alignment.topLeft,
+        children: [if (current != null) current],
+      ),
+      child: KeyedSubtree(
+        key: ValueKey(index),
+        child: widget.navItems[index].page,
+      ),
+    );
 
     if (Responsive.isMobile(context)) {
+      // Bottom nav holds up to 5 destinations. Anything past that is reached
+      // from the drawer (the app bar's menu button) rather than a "More" tab.
+      const maxTabs = 5;
+      final tabs = widget.navItems.length > maxTabs
+          ? widget.navItems.take(maxTabs).toList()
+          : widget.navItems;
+      final selectedTab = index < tabs.length ? index : 0;
+
       return Scaffold(
         appBar: AppBar(
-          title: Text('Luxi · ${widget.navItems[index].label}'),
+          title: Text(widget.navItems[index].label),
           actions: const [_ThemeToggle()],
         ),
         drawer: Drawer(
@@ -59,7 +97,18 @@ class _DashboardShellState extends State<DashboardShell> {
             ),
           ),
         ),
+        // Content flows under the floating bar so it appears to hover.
+        extendBody: true,
         body: body,
+        bottomNavigationBar: _FloatingNavBar(
+          selectedIndex: selectedTab,
+          onSelected: _select,
+          destinations: [
+            for (final item in tabs)
+              NavigationDestination(icon: Icon(item.icon), label: item.label),
+          ],
+        ),
+        key: _scaffoldKey,
       );
     }
 
@@ -81,6 +130,64 @@ class _DashboardShellState extends State<DashboardShell> {
           const VerticalDivider(width: 1),
           Expanded(child: body),
         ],
+      ),
+    );
+  }
+}
+
+/// Bottom navigation rendered as a detached, rounded bar that hovers over the
+/// content instead of sitting flush against the screen edge.
+class _FloatingNavBar extends StatelessWidget {
+  const _FloatingNavBar({
+    required this.selectedIndex,
+    required this.onSelected,
+    required this.destinations,
+  });
+
+  final int selectedIndex;
+  final ValueChanged<int> onSelected;
+  final List<NavigationDestination> destinations;
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+
+    return SafeArea(
+      top: false,
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
+        child: DecoratedBox(
+          decoration: BoxDecoration(
+            color: scheme.surface,
+            borderRadius: BorderRadius.circular(26),
+            border: Border.all(
+                color: scheme.outlineVariant.withValues(alpha: 0.6)),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withValues(alpha: isDark ? 0.45 : 0.12),
+                blurRadius: 20,
+                offset: const Offset(0, 6),
+              ),
+            ],
+          ),
+          child: ClipRRect(
+            borderRadius: BorderRadius.circular(26),
+            child: NavigationBar(
+              selectedIndex: selectedIndex,
+              onDestinationSelected: onSelected,
+              destinations: destinations,
+              // The wrapper supplies the surface, shadow and shape.
+              backgroundColor: Colors.transparent,
+              surfaceTintColor: Colors.transparent,
+              elevation: 0,
+              height: 68,
+              indicatorColor: scheme.primary.withValues(alpha: 0.16),
+              labelBehavior:
+                  NavigationDestinationLabelBehavior.onlyShowSelected,
+            ),
+          ),
+        ),
       ),
     );
   }

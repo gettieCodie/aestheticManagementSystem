@@ -99,6 +99,9 @@ class BillingStore extends ChangeNotifier with FirestoreErrorTracker {
     required PaymentMethod method,
     required String staffName,
     String note = '',
+    String reference = '',
+    double? amountReceived,
+    double? changeGiven,
   }) {
     return _repo.recordPayment(
       invoiceId: invoiceId,
@@ -106,6 +109,9 @@ class BillingStore extends ChangeNotifier with FirestoreErrorTracker {
       method: method,
       staffName: staffName,
       note: note,
+      reference: reference,
+      amountReceived: amountReceived,
+      changeGiven: changeGiven,
     );
   }
 

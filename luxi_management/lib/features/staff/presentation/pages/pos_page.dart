@@ -3,7 +3,8 @@ import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 
 import '../../../../core/utils/formatters.dart';
-import '../../../admin/models/product.dart' show kBranches;
+import '../../../../core/utils/responsive.dart';
+import '../../../admin/models/product.dart' show kBranches, Product;
 import '../../../admin/models/promo_package.dart';
 import '../../../admin/models/service_config.dart';
 import '../../../admin/presentation/pages/page_scaffold.dart';
@@ -16,6 +17,7 @@ import '../../../billing/state/billing_store.dart';
 import '../../models/customer.dart';
 import '../../state/staff_store.dart';
 import 'scheduling_page.dart' show kTimeSlots;
+import '../../../../core/widgets/app_toast.dart';
 
 enum _Mode { newSale, payments }
 
@@ -49,10 +51,14 @@ class _PosPageState extends State<PosPage> {
   final _interval = TextEditingController(text: '7');
   final _discountPct = TextEditingController(text: '0');
   final _installment = TextEditingController();
+  final _reference = TextEditingController();
+  final _received = TextEditingController();
   DateTime _startDate = DateTime.now();
   final Set<String> _aftercare = {};
   _Plan _plan = _Plan.full;
+  PaymentMethod _payMethod = PaymentMethod.cash;
   bool _submitting = false;
+  String? _payError;
 
   @override
   void initState() {
@@ -83,7 +89,8 @@ class _PosPageState extends State<PosPage> {
   @override
   void dispose() {
     for (final c in [
-      _customType, _customPrice, _customSessions, _interval, _discountPct, _installment
+      _customType, _customPrice, _customSessions, _interval, _discountPct,
+      _installment, _reference, _received
     ]) {
       c.dispose();
     }
@@ -141,22 +148,47 @@ class _PosPageState extends State<PosPage> {
     }
   }
 
+  /// Every money figure the checkout needs, derived once so the order summary
+  /// and the sticky mobile bar can never disagree.
+  ({double subtotal, double discountAmt, double total, double payingNow, double balanceAfter, bool ready})
+      _totals(AdminStore admin) {
+    final items = _cart(admin);
+    final subtotal = items.fold<double>(0, (s, i) => s + i.lineTotal);
+    final discountPct = double.tryParse(_discountPct.text) ?? 0;
+    final discountAmt = subtotal * discountPct / 100;
+    final total = (subtotal - discountAmt).clamp(0, double.infinity).toDouble();
+    final payingNow = _payingNow(total);
+    return (
+      subtotal: subtotal,
+      discountAmt: discountAmt,
+      total: total,
+      payingNow: payingNow,
+      balanceAfter: (total - payingNow).clamp(0, double.infinity).toDouble(),
+      ready: _customerId != null && _baseAmount > 0,
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
-    return AdminPageScaffold(
+    final isMobile = Responsive.isMobile(context);
+
+    final page = AdminPageScaffold(
       title: 'Point of Sale',
       subtitle: 'Sell packages or services and take payment',
       children: [
         SegmentedButton<_Mode>(
-          segments: const [
+          // Icons don't fit alongside the labels on a phone.
+          segments: [
             ButtonSegment(
                 value: _Mode.newSale,
-                icon: Icon(Icons.add_shopping_cart_rounded),
-                label: Text('New Sale')),
+                icon: isMobile ? null : const Icon(Icons.add_shopping_cart_rounded),
+                label: const Text('New Sale')),
             ButtonSegment(
                 value: _Mode.payments,
-                icon: Icon(Icons.account_balance_wallet_rounded),
-                label: Text('Collect Payment')),
+                icon: isMobile
+                    ? null
+                    : const Icon(Icons.account_balance_wallet_rounded),
+                label: Text(isMobile ? 'Collect' : 'Collect Payment')),
           ],
           selected: {_mode},
           showSelectedIcon: false,
@@ -165,6 +197,88 @@ class _PosPageState extends State<PosPage> {
         const SizedBox(height: 20),
         if (_mode == _Mode.newSale) _newSale(context) else _payments(context),
       ],
+    );
+
+    if (!isMobile) return page;
+
+    // On phones the checkout is a long scroll, so the total and the confirm
+    // button ride along in a bar pinned above the navigation.
+    return Scaffold(
+      backgroundColor: Colors.transparent,
+      body: page,
+      bottomNavigationBar:
+          _mode == _Mode.newSale ? _stickyCheckoutBar(context) : null,
+    );
+  }
+
+  Widget _stickyCheckoutBar(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    final admin = context.watch<AdminStore>();
+    final staff = context.read<StaffStore>();
+    final t = _totals(admin);
+
+    return Padding(
+      // Clears the floating bottom navigation bar.
+      padding: const EdgeInsets.fromLTRB(16, 0, 16, 92),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+        decoration: BoxDecoration(
+          color: scheme.surface,
+          borderRadius: BorderRadius.circular(18),
+          border: Border.all(color: scheme.primary.withValues(alpha: 0.5)),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withValues(alpha: 0.12),
+              blurRadius: 18,
+              offset: const Offset(0, 6),
+            ),
+          ],
+        ),
+        child: Row(
+          children: [
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text('Total',
+                      style: TextStyle(
+                          fontSize: 11, color: scheme.onSurfaceVariant)),
+                  Text(Formatters.peso(t.total),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                          fontSize: 19,
+                          fontWeight: FontWeight.w800,
+                          color: scheme.primary)),
+                  if (t.payingNow != t.total)
+                    Text('Paying now ${Formatters.peso(t.payingNow)}',
+                        style: TextStyle(
+                            fontSize: 11, color: scheme.onSurfaceVariant)),
+                ],
+              ),
+            ),
+            const SizedBox(width: 10),
+            SizedBox(
+              height: 46,
+              child: FilledButton.icon(
+                onPressed: t.ready && !_submitting
+                    ? () => _complete(context, t.total, t.payingNow, staff)
+                    : null,
+                icon: _submitting
+                    ? const SizedBox(
+                        width: 16,
+                        height: 16,
+                        child: CircularProgressIndicator(
+                            strokeWidth: 2, color: Colors.white),
+                      )
+                    : const Icon(Icons.point_of_sale_rounded, size: 18),
+                label: Text(_submitting ? 'Processing…' : 'Complete'),
+              ),
+            ),
+          ],
+        ),
+      ),
     );
   }
 
@@ -222,7 +336,13 @@ class _PosPageState extends State<PosPage> {
             ],
           );
         }
-        return Column(children: [left, const SizedBox(height: 16), right]);
+        return Column(children: [
+          left,
+          const SizedBox(height: 16),
+          right,
+          // Room to scroll clear of the sticky checkout bar.
+          if (Responsive.isMobile(context)) const SizedBox(height: 60),
+        ]);
       },
     );
   }
@@ -474,58 +594,79 @@ class _PosPageState extends State<PosPage> {
   }
 
   Widget _aftercareGrid(AdminStore admin) {
-    final scheme = Theme.of(context).colorScheme;
     final products = admin.products.where((p) => p.price > 0).toList();
+
+    // Phones get one full-width tile per row (a Column — a Wrap child can't
+    // ask for infinite width). Wider screens keep the 180px tile grid.
+    if (Responsive.isMobile(context)) {
+      return Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          for (final p in products)
+            Padding(
+              padding: const EdgeInsets.only(bottom: 10),
+              child: _aftercareTile(p),
+            ),
+        ],
+      );
+    }
+
     return Wrap(
       spacing: 10,
       runSpacing: 10,
       children: [
-        for (final p in products)
-          InkWell(
-            borderRadius: BorderRadius.circular(12),
-            onTap: () => setState(() =>
-                _aftercare.contains(p.id) ? _aftercare.remove(p.id) : _aftercare.add(p.id)),
-            child: Container(
-              width: 180,
-              padding: const EdgeInsets.all(12),
-              decoration: BoxDecoration(
-                color: _aftercare.contains(p.id)
-                    ? scheme.primary.withValues(alpha: 0.1)
-                    : scheme.surface,
-                borderRadius: BorderRadius.circular(12),
-                border: Border.all(
-                  color: _aftercare.contains(p.id) ? scheme.primary : scheme.outlineVariant,
-                  width: _aftercare.contains(p.id) ? 1.5 : 1,
-                ),
-              ),
-              child: Row(
+        for (final p in products) SizedBox(width: 180, child: _aftercareTile(p)),
+      ],
+    );
+  }
+
+  Widget _aftercareTile(Product p) {
+    final scheme = Theme.of(context).colorScheme;
+    final selected = _aftercare.contains(p.id);
+    return InkWell(
+      borderRadius: BorderRadius.circular(12),
+      onTap: () => setState(
+          () => selected ? _aftercare.remove(p.id) : _aftercare.add(p.id)),
+      child: Container(
+        padding: const EdgeInsets.all(12),
+        decoration: BoxDecoration(
+          color: selected ? scheme.primary.withValues(alpha: 0.1) : scheme.surface,
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(
+            color: selected ? scheme.primary : scheme.outlineVariant,
+            width: selected ? 1.5 : 1,
+          ),
+        ),
+        child: Row(
+          children: [
+            Icon(
+              selected
+                  ? Icons.check_circle_rounded
+                  : Icons.add_circle_outline_rounded,
+              size: 18,
+              color: scheme.primary,
+            ),
+            const SizedBox(width: 8),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Icon(
-                    _aftercare.contains(p.id)
-                        ? Icons.check_circle_rounded
-                        : Icons.add_circle_outline_rounded,
-                    size: 18,
-                    color: scheme.primary,
-                  ),
-                  const SizedBox(width: 8),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(p.name,
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 13)),
-                        Text(Formatters.peso(p.price),
-                            style: TextStyle(color: scheme.primary, fontWeight: FontWeight.w700, fontSize: 12)),
-                      ],
-                    ),
-                  ),
+                  Text(p.name,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(
+                          fontWeight: FontWeight.w600, fontSize: 13)),
+                  Text(Formatters.peso(p.price),
+                      style: TextStyle(
+                          color: scheme.primary,
+                          fontWeight: FontWeight.w700,
+                          fontSize: 12)),
                 ],
               ),
             ),
-          ),
-      ],
+          ],
+        ),
+      ),
     );
   }
 
@@ -533,17 +674,18 @@ class _PosPageState extends State<PosPage> {
   Widget _orderSummary(BuildContext context, AdminStore admin) {
     final scheme = Theme.of(context).colorScheme;
     final staff = context.read<StaffStore>();
+    final isMobile = Responsive.isMobile(context);
     final items = _cart(admin);
-    final subtotal = items.fold<double>(0, (s, i) => s + i.lineTotal);
-    final discountPct = double.tryParse(_discountPct.text) ?? 0;
-    final discountAmt = subtotal * discountPct / 100;
-    final total = (subtotal - discountAmt).clamp(0, double.infinity).toDouble();
-    final payingNow = _payingNow(total);
-    final balanceAfter = (total - payingNow).clamp(0, double.infinity);
-    final ready = _customerId != null && _baseAmount > 0;
+    final t = _totals(admin);
+    final subtotal = t.subtotal;
+    final discountAmt = t.discountAmt;
+    final total = t.total;
+    final payingNow = t.payingNow;
+    final balanceAfter = t.balanceAfter;
+    final ready = t.ready;
 
     return Container(
-      padding: const EdgeInsets.all(20),
+      padding: EdgeInsets.all(isMobile ? 14 : 20),
       decoration: BoxDecoration(
         color: scheme.surface,
         borderRadius: BorderRadius.circular(18),
@@ -649,29 +791,32 @@ class _PosPageState extends State<PosPage> {
               onChanged: (_) => setState(() {}),
             ),
           ],
+          if (payingNow > 0) _paymentDetails(payingNow),
           const SizedBox(height: 12),
           _row(context, 'Paying now', Formatters.peso(payingNow), color: scheme.primary, bold: true),
           _row(context, 'Balance', Formatters.peso(balanceAfter),
               color: balanceAfter > 0 ? scheme.error : scheme.onSurfaceVariant),
           const SizedBox(height: 16),
-          SizedBox(
-            width: double.infinity,
-            height: 52,
-            child: FilledButton.icon(
-              onPressed: ready && !_submitting
-                  ? () => _complete(context, total, payingNow, staff)
-                  : null,
-              icon: _submitting
-                  ? const SizedBox(
-                      width: 18,
-                      height: 18,
-                      child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
-                    )
-                  : const Icon(Icons.point_of_sale_rounded),
-              label: Text(_submitting ? 'Processing…' : 'Complete Sale',
-                  style: const TextStyle(fontSize: 16)),
+          // On phones this lives in the sticky bar instead.
+          if (!isMobile)
+            SizedBox(
+              width: double.infinity,
+              height: 52,
+              child: FilledButton.icon(
+                onPressed: ready && !_submitting
+                    ? () => _complete(context, total, payingNow, staff)
+                    : null,
+                icon: _submitting
+                    ? const SizedBox(
+                        width: 18,
+                        height: 18,
+                        child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
+                      )
+                    : const Icon(Icons.point_of_sale_rounded),
+                label: Text(_submitting ? 'Processing…' : 'Complete Sale',
+                    style: const TextStyle(fontSize: 16)),
+              ),
             ),
-          ),
           if (!ready)
             Padding(
               padding: const EdgeInsets.only(top: 8),
@@ -693,6 +838,88 @@ class _PosPageState extends State<PosPage> {
       default:
         return Icons.spa_rounded;
     }
+  }
+
+  double get _receivedValue => double.tryParse(_received.text) ?? 0;
+
+  double _changeFor(double payingNow) =>
+      (_receivedValue - payingNow).clamp(0, double.infinity).toDouble();
+
+  /// Payment method picker + only the fields the chosen method needs.
+  Widget _paymentDetails(double payingNow) {
+    final scheme = Theme.of(context).colorScheme;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const SizedBox(height: 14),
+        Text('Payment method',
+            style: TextStyle(fontWeight: FontWeight.w700, color: scheme.onSurface)),
+        const SizedBox(height: 8),
+        InputDecorator(
+          decoration: const InputDecoration(isDense: true),
+          child: DropdownButtonHideUnderline(
+            child: DropdownButton<PaymentMethod>(
+              value: _payMethod,
+              isExpanded: true,
+              items: [
+                for (final m in PaymentMethod.values)
+                  DropdownMenuItem(
+                    value: m,
+                    child: Row(children: [
+                      Icon(m.icon, size: 18, color: scheme.onSurfaceVariant),
+                      const SizedBox(width: 8),
+                      Text(m.label),
+                    ]),
+                  ),
+              ],
+              onChanged: (v) => setState(() {
+                _payMethod = v ?? _payMethod;
+                _payError = null;
+              }),
+            ),
+          ),
+        ),
+        const SizedBox(height: 8),
+        if (_payMethod.isCash) ...[
+          TextField(
+            controller: _received,
+            decoration: const InputDecoration(labelText: 'Amount received (₱)'),
+            keyboardType: TextInputType.number,
+            inputFormatters: [FilteringTextInputFormatter.digitsOnly],
+            onChanged: (_) => setState(() {}),
+          ),
+          const SizedBox(height: 8),
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+            decoration: BoxDecoration(
+              color: scheme.primary.withValues(alpha: 0.08),
+              borderRadius: BorderRadius.circular(10),
+            ),
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                const Text('Change'),
+                Text(Formatters.peso(_changeFor(payingNow)),
+                    style: TextStyle(
+                        fontWeight: FontWeight.w800, color: scheme.primary)),
+              ],
+            ),
+          ),
+        ] else
+          TextField(
+            controller: _reference,
+            decoration: InputDecoration(
+              labelText: '${_payMethod.label} reference number',
+              hintText: 'e.g. 0123456789',
+            ),
+            onChanged: (_) => setState(() {}),
+          ),
+        if (_payError != null) ...[
+          const SizedBox(height: 8),
+          Text(_payError!, style: TextStyle(color: scheme.error, fontSize: 12)),
+        ],
+      ],
+    );
   }
 
   Widget _planOption(_Plan plan, IconData icon, String title, String desc, String? amount) {
@@ -738,7 +965,38 @@ class _PosPageState extends State<PosPage> {
       BuildContext context, double total, double payingNow, StaffStore staff) async {
     if (_submitting) return;
     final customer = staff.customerById(_customerId);
-    if (customer == null) return;
+    if (customer == null) {
+      AppToast.error(context, 'Select a client before completing the sale.');
+      return;
+    }
+    if (total <= 0) {
+      AppToast.error(context, 'Add something to the order first.');
+      return;
+    }
+    final discountPct = double.tryParse(_discountPct.text) ?? 0;
+    if (discountPct > 100) {
+      AppToast.error(context, 'Discount cannot exceed 100%.');
+      return;
+    }
+    if (_saleType == _SaleType.package && _sessions <= 0) {
+      AppToast.error(context, 'Set how many sessions this package includes.');
+      return;
+    }
+
+    // Validate the payment details before touching Firestore.
+    if (payingNow > 0) {
+      if (_payMethod.requiresReference && _reference.text.trim().isEmpty) {
+        setState(() =>
+            _payError = 'Enter the ${_payMethod.label} reference number.');
+        return;
+      }
+      if (_payMethod.isCash && _receivedValue < payingNow) {
+        setState(() =>
+            _payError = 'Amount received is less than the amount due.');
+        return;
+      }
+      setState(() => _payError = null);
+    }
     final admin = context.read<AdminStore>();
     final staffName = context.read<AuthController>().currentUser?.fullName ?? 'Staff';
     final messenger = ScaffoldMessenger.of(context);
@@ -747,9 +1005,7 @@ class _PosPageState extends State<PosPage> {
     try {
       await _completeSale(context, total, payingNow, customer, admin, staffName, staff);
     } catch (e) {
-      messenger.showSnackBar(
-        SnackBar(content: Text('Could not complete sale: $e')),
-      );
+      AppToast.errorOn(messenger, 'Could not complete sale: $e');
     } finally {
       if (mounted) setState(() => _submitting = false);
     }
@@ -808,9 +1064,12 @@ class _PosPageState extends State<PosPage> {
       await billing.recordPayment(
         invoiceId: invoice.id,
         amount: payingNow,
-        method: PaymentMethod.cash,
+        method: _payMethod,
         staffName: staffName,
         note: _plan == _Plan.perSession ? 'Session 1' : 'Initial payment',
+        reference: _reference.text.trim(),
+        amountReceived: _payMethod.isCash ? _receivedValue : null,
+        changeGiven: _payMethod.isCash ? _changeFor(payingNow) : null,
       );
     }
 
@@ -835,10 +1094,18 @@ class _PosPageState extends State<PosPage> {
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text('${customer.fullName} — ${_saleName}'),
+            Text('${customer.fullName} — $_saleName'),
             const SizedBox(height: 8),
             Text('Total ${Formatters.peso(total)}'),
             Text('Paid ${Formatters.peso(paidTotal.toDouble())}'),
+            if (payingNow > 0) ...[
+              Text('Method ${_payMethod.label}'),
+              if (_payMethod.isCash && _changeFor(payingNow) > 0)
+                Text('Received ${Formatters.peso(_receivedValue)} · '
+                    'Change ${Formatters.peso(_changeFor(payingNow))}'),
+              if (_payMethod.requiresReference && _reference.text.trim().isNotEmpty)
+                Text('Ref ${_reference.text.trim()}'),
+            ],
             Text('Balance ${Formatters.peso(balance.toDouble())}',
                 style: TextStyle(color: Theme.of(context).colorScheme.error)),
           ],
@@ -859,6 +1126,10 @@ class _PosPageState extends State<PosPage> {
       _customPrice.clear();
       _discountPct.text = '0';
       _plan = _Plan.full;
+      _reference.clear();
+      _received.clear();
+      _payMethod = PaymentMethod.cash;
+      _payError = null;
     });
   }
 
@@ -880,6 +1151,52 @@ class _PosPageState extends State<PosPage> {
 
   Widget _openInvoiceRow(BuildContext context, Invoice inv) {
     final scheme = Theme.of(context).colorScheme;
+    final isMobile = Responsive.isMobile(context);
+
+    final identity = Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(inv.customerName,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: const TextStyle(fontWeight: FontWeight.w700)),
+        Text(
+            '${inv.id} · Total ${Formatters.peso(inv.total)} · '
+            'Paid ${Formatters.peso(inv.amountPaid)}',
+            style: TextStyle(fontSize: 12, color: scheme.onSurfaceVariant)),
+      ],
+    );
+
+    final amount = Column(
+      crossAxisAlignment:
+          isMobile ? CrossAxisAlignment.start : CrossAxisAlignment.end,
+      children: [
+        Text(Formatters.peso(inv.balance),
+            style: TextStyle(fontWeight: FontWeight.w800, color: scheme.error)),
+        Text(inv.isOverdue ? 'Overdue' : inv.status.label,
+            style: TextStyle(
+                fontSize: 11,
+                color: inv.isOverdue ? scheme.error : scheme.onSurfaceVariant)),
+      ],
+    );
+
+    final historyButton = IconButton(
+      tooltip: 'History',
+      icon: const Icon(Icons.history_rounded, size: 18),
+      onPressed: () => showDialog<void>(
+        context: context,
+        builder: (_) => PaymentHistorySheet(invoiceId: inv.id),
+      ),
+    );
+
+    final collectButton = FilledButton(
+      onPressed: () => showDialog<void>(
+        context: context,
+        builder: (_) => RecordPaymentDialog(invoiceId: inv.id),
+      ),
+      child: const Text('Collect'),
+    );
+
     return Container(
       margin: const EdgeInsets.only(bottom: 10),
       padding: const EdgeInsets.all(14),
@@ -887,48 +1204,32 @@ class _PosPageState extends State<PosPage> {
         color: scheme.surfaceContainerHighest.withValues(alpha: 0.35),
         borderRadius: BorderRadius.circular(12),
       ),
-      child: Row(
-        children: [
-          Expanded(
-            child: Column(
+      // Four things in one row overflows a phone — stack them there.
+      child: isMobile
+          ? Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text('${inv.customerName} · ${inv.id}',
-                    style: const TextStyle(fontWeight: FontWeight.w700)),
-                Text('Total ${Formatters.peso(inv.total)} · Paid ${Formatters.peso(inv.amountPaid)}',
-                    style: TextStyle(fontSize: 12, color: scheme.onSurfaceVariant)),
+                identity,
+                const SizedBox(height: 8),
+                Row(
+                  children: [
+                    Expanded(child: amount),
+                    historyButton,
+                    const SizedBox(width: 4),
+                    SizedBox(height: 40, child: collectButton),
+                  ],
+                ),
+              ],
+            )
+          : Row(
+              children: [
+                Expanded(child: identity),
+                amount,
+                const SizedBox(width: 8),
+                historyButton,
+                collectButton,
               ],
             ),
-          ),
-          Column(
-            crossAxisAlignment: CrossAxisAlignment.end,
-            children: [
-              Text(Formatters.peso(inv.balance),
-                  style: TextStyle(fontWeight: FontWeight.w800, color: scheme.error)),
-              Text(inv.isOverdue ? 'Overdue' : inv.status.label,
-                  style: TextStyle(
-                      fontSize: 11,
-                      color: inv.isOverdue ? scheme.error : scheme.onSurfaceVariant)),
-            ],
-          ),
-          const SizedBox(width: 8),
-          IconButton(
-            tooltip: 'History',
-            icon: const Icon(Icons.history_rounded, size: 18),
-            onPressed: () => showDialog<void>(
-              context: context,
-              builder: (_) => PaymentHistorySheet(invoiceId: inv.id),
-            ),
-          ),
-          FilledButton(
-            onPressed: () => showDialog<void>(
-              context: context,
-              builder: (_) => RecordPaymentDialog(invoiceId: inv.id),
-            ),
-            child: const Text('Collect'),
-          ),
-        ],
-      ),
     );
   }
 

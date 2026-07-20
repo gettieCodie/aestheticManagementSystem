@@ -6,10 +6,12 @@ import '../../../core/firestore/store_errors.dart';
 import '../models/product.dart';
 import '../models/promo_package.dart';
 import '../models/service_config.dart';
+import '../models/stock_movement.dart';
 import '../services/products_repository.dart';
 import '../services/promo_packages_repository.dart';
 import '../services/services_repository.dart';
 import '../services/settings_repository.dart';
+import '../services/stock_movements_repository.dart';
 
 /// Single store for all admin data — services, products/inventory, promo
 /// packages, and settings — each backed live by Firestore via its own
@@ -27,11 +29,19 @@ class AdminStore extends ChangeNotifier with FirestoreErrorTracker {
     ProductsRepository? productsRepository,
     PromoPackagesRepository? promoPackagesRepository,
     SettingsRepository? settingsRepository,
+    StockMovementsRepository? stockMovementsRepository,
   })  : _servicesRepo = servicesRepository ?? ServicesRepository(),
         _productsRepo = productsRepository ?? ProductsRepository(),
         _promoPackagesRepo =
             promoPackagesRepository ?? PromoPackagesRepository(),
-        _settingsRepo = settingsRepository ?? SettingsRepository() {
+        _settingsRepo = settingsRepository ?? SettingsRepository(),
+        _movementsRepo =
+            stockMovementsRepository ?? StockMovementsRepository() {
+    _movementsSub = _movementsRepo.watchMovements().listen((list) {
+      clearStreamError('stockMovements');
+      _movements = list;
+      notifyListeners();
+    }, onError: (Object e) => reportStreamError('stockMovements', e));
     _servicesSub = _servicesRepo.watchServices().listen((list) {
       clearStreamError('services');
       _services = list;
@@ -59,11 +69,13 @@ class AdminStore extends ChangeNotifier with FirestoreErrorTracker {
   final ProductsRepository _productsRepo;
   final PromoPackagesRepository _promoPackagesRepo;
   final SettingsRepository _settingsRepo;
+  final StockMovementsRepository _movementsRepo;
 
   late final StreamSubscription<List<ServiceConfig>> _servicesSub;
   late final StreamSubscription<List<Product>> _productsSub;
   late final StreamSubscription<List<PromoPackage>> _promoPackagesSub;
   late final StreamSubscription<dynamic> _settingsSub;
+  late final StreamSubscription<List<StockMovement>> _movementsSub;
 
   @override
   void dispose() {
@@ -71,6 +83,7 @@ class AdminStore extends ChangeNotifier with FirestoreErrorTracker {
     _productsSub.cancel();
     _promoPackagesSub.cancel();
     _settingsSub.cancel();
+    _movementsSub.cancel();
     super.dispose();
   }
 
@@ -129,7 +142,8 @@ class AdminStore extends ChangeNotifier with FirestoreErrorTracker {
   List<Product> _products = [];
   List<Product> get products => List.unmodifiable(_products);
 
-  Future<void> addProduct(Product product) => _productsRepo.addProduct(product);
+  /// Returns the SKU that was assigned (auto-generated when left blank).
+  Future<String> addProduct(Product product) => _productsRepo.addProduct(product);
 
   Future<void> updateProduct(Product product) =>
       _productsRepo.updateProduct(product);
@@ -162,4 +176,66 @@ class AdminStore extends ChangeNotifier with FirestoreErrorTracker {
       _products.where((p) => p.status == InventoryStatus.critical).length;
   int get outOfStockCount =>
       _products.where((p) => p.status == InventoryStatus.outOfStock).length;
+
+  int get expiringSoonCount => _products.where((p) => p.isExpiringSoon).length;
+
+  /// Everything at or below its reorder level, worst first.
+  List<Product> get needsReplenishment {
+    final list =
+        _products.where((p) => p.status != InventoryStatus.inStock).toList();
+    list.sort((a, b) => a.totalStock.compareTo(b.totalStock));
+    return list;
+  }
+
+  Product? productById(String id) {
+    for (final p in _products) {
+      if (p.id == id) return p;
+    }
+    return null;
+  }
+
+  // --- Stock movements (the ledger) -----------------------------------------
+  List<StockMovement> _movements = [];
+  List<StockMovement> get stockMovements => List.unmodifiable(_movements);
+
+  List<StockMovement> movementsFor(String productId) =>
+      _movements.where((m) => m.productId == productId).toList();
+
+  /// Applies a stock change **and** records it in one call, so the quantity in
+  /// `stock` and the ledger in `stock_movements` can never drift apart.
+  ///
+  /// [delta] is signed. The resulting branch quantity is clamped at zero —
+  /// deducting more than is on hand leaves it empty rather than negative.
+  Future<void> adjustStock({
+    required Product product,
+    required String branch,
+    required int delta,
+    required String reason,
+    required String staffName,
+    String remarks = '',
+  }) async {
+    if (delta == 0) return;
+    final current = product.branchStock[branch] ?? 0;
+    final next = (current + delta) < 0 ? 0 : current + delta;
+
+    await setStock(
+      productId: product.id,
+      productName: product.name,
+      branch: branch,
+      quantity: next,
+    );
+    await _movementsRepo.add(StockMovement(
+      id: '',
+      productId: product.id,
+      productName: product.name,
+      branch: branch,
+      type: delta > 0 ? MovementType.stockIn : MovementType.stockOut,
+      delta: next - current,
+      date: DateTime.now(),
+      staffName: staffName,
+      reason: reason,
+      remarks: remarks,
+      resultingStock: next,
+    ));
+  }
 }

@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../../../core/constants/app_spacing.dart';
+import '../../../../core/utils/responsive.dart';
 
 /// Shared page layout: a title/subtitle header over a scrollable, width-capped body.
 class AdminPageScaffold extends StatelessWidget {
@@ -18,8 +19,16 @@ class AdminPageScaffold extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
+    final isMobile = Responsive.isMobile(context);
+    // Tighter gutters and a smaller header on phones; desktop is unchanged.
     return SingleChildScrollView(
-      padding: const EdgeInsets.all(AppSpacing.xl),
+      padding: EdgeInsets.fromLTRB(
+        isMobile ? AppSpacing.lg : AppSpacing.xl,
+        isMobile ? AppSpacing.lg : AppSpacing.xl,
+        isMobile ? AppSpacing.lg : AppSpacing.xl,
+        // Room to scroll clear of the floating bottom navigation bar.
+        isMobile ? 120 : AppSpacing.xl,
+      ),
       child: Center(
         child: ConstrainedBox(
           constraints: const BoxConstraints(maxWidth: AppSpacing.maxContentWidth),
@@ -27,9 +36,9 @@ class AdminPageScaffold extends StatelessWidget {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Text(title,
-                  style: Theme.of(context)
-                      .textTheme
-                      .headlineMedium
+                  style: (isMobile
+                          ? Theme.of(context).textTheme.headlineSmall
+                          : Theme.of(context).textTheme.headlineMedium)
                       ?.copyWith(fontWeight: FontWeight.w800)),
               const SizedBox(height: 4),
               Text(subtitle,
@@ -37,7 +46,7 @@ class AdminPageScaffold extends StatelessWidget {
                       .textTheme
                       .bodyMedium
                       ?.copyWith(color: scheme.onSurfaceVariant)),
-              const SizedBox(height: AppSpacing.xl),
+              SizedBox(height: isMobile ? AppSpacing.lg : AppSpacing.xl),
               ...children,
             ],
           ),
@@ -56,12 +65,14 @@ class StatRow extends StatelessWidget {
   Widget build(BuildContext context) {
     return LayoutBuilder(
       builder: (context, constraints) {
+        // On phones, up to three metrics still fit side by side (the cards
+        // switch to a compact style themselves); more than that wraps to two.
         final columns = constraints.maxWidth >= 900
             ? 4
             : constraints.maxWidth >= 480
                 ? 2
-                : 1;
-        const spacing = AppSpacing.md;
+                : (cards.isEmpty ? 1 : (cards.length <= 3 ? cards.length : 2));
+        final spacing = constraints.maxWidth < 480 ? 8.0 : AppSpacing.md;
         final width =
             (constraints.maxWidth - spacing * (columns - 1)) / columns;
         return Wrap(
