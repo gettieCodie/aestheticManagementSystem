@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
-import '../../../core/utils/validators.dart';
 import '../../../core/widgets/app_toast.dart';
 import '../state/auth_controller.dart';
 

@@ -128,7 +128,10 @@ class _PosPageState extends State<PosPage> {
           quantity: 1,
           unitPrice: _baseAmount));
     }
-    for (final p in admin.products.where((p) => _aftercare.contains(p.id))) {
+    // Re-checked here (not just in the picker grid) so a branch switch after
+    // selecting a product can't leave a now-out-of-stock item in the cart.
+    for (final p in admin.products.where(
+        (p) => _aftercare.contains(p.id) && (p.branchStock[_branch] ?? 0) > 0)) {
       items.add(InvoiceLineItem(
           name: p.name,
           type: 'product',
@@ -151,7 +154,14 @@ class _PosPageState extends State<PosPage> {
       case _Plan.full:
         return total;
       case _Plan.perSession:
-        return _sessions > 0 ? (_baseAmount / _sessions) : 0;
+        if (_sessions <= 0) return 0;
+        // The discount applies to the whole sale, so the per-session amount
+        // must reflect it too — otherwise the sessions billed at the
+        // undiscounted price never add up to the discounted total, and the
+        // last session gets silently short-changed.
+        final discountPct = double.tryParse(_discountPct.text) ?? 0;
+        final packageDiscounted = _baseAmount * (1 - discountPct / 100);
+        return Formatters.roundMoney(packageDiscounted / _sessions);
     }
   }
 
@@ -171,7 +181,7 @@ class _PosPageState extends State<PosPage> {
       total: total,
       payingNow: payingNow,
       balanceAfter: (total - payingNow).clamp(0, double.infinity).toDouble(),
-      ready: _customerId != null && subtotal > 0,
+      ready: (_customerId != null || _baseAmount <= 0) && subtotal > 0,
     );
   }
 
@@ -300,6 +310,7 @@ class _PosPageState extends State<PosPage> {
           step: 1,
           title: 'Choose client',
           icon: Icons.person_rounded,
+          optional: _baseAmount <= 0,
           child: _customerPicker(context),
         ),
         const SizedBox(height: 16),
@@ -603,7 +614,13 @@ class _PosPageState extends State<PosPage> {
   }
 
   Widget _aftercareGrid(AdminStore admin) {
-    final products = admin.products.where((p) => p.price > 0).toList();
+    // Nothing with no stock at this branch can be rung up — otherwise the
+    // sale bills a quantity the shelf doesn't have and the stock deduction
+    // silently clamps at zero, leaving the invoice and the movement ledger
+    // disagreeing on what was actually sold.
+    final products = admin.products
+        .where((p) => p.price > 0 && (p.branchStock[_branch] ?? 0) > 0)
+        .toList();
 
     // Phones get one full-width tile per row (a Column — a Wrap child can't
     // ask for infinite width). Wider screens keep the 180px tile grid.
@@ -792,7 +809,7 @@ class _PosPageState extends State<PosPage> {
           if (_saleType == _SaleType.package)
             _planOption(_Plan.perSession, Icons.confirmation_number_rounded, 'Session Payment',
                 'Pay one session at a time',
-                _sessions > 0 ? Formatters.peso(_baseAmount / _sessions) : null),
+                _sessions > 0 ? Formatters.peso(_payingNow(total)) : null),
           if (payingNow > 0) _paymentDetails(payingNow),
           const SizedBox(height: 12),
           _row(context, 'Paying now', Formatters.peso(payingNow), color: scheme.primary, bold: true),
@@ -967,7 +984,10 @@ class _PosPageState extends State<PosPage> {
       BuildContext context, double total, double payingNow, StaffStore staff) async {
     if (_submitting) return;
     final customer = staff.customerById(_customerId);
-    if (customer == null) {
+    // A package or service is tied to a client's treatment history, so that
+    // needs a real record — but a walk-in buying only aftercare products
+    // doesn't, and shouldn't be blocked for lack of one.
+    if (customer == null && _baseAmount > 0) {
       AppToast.error(context, 'Select a client before completing the sale.');
       return;
     }
@@ -1017,7 +1037,7 @@ class _PosPageState extends State<PosPage> {
     BuildContext context,
     double total,
     double payingNow,
-    Customer customer,
+    Customer? customer,
     AdminStore admin,
     String staffName,
     StaffStore staff,
@@ -1029,8 +1049,8 @@ class _PosPageState extends State<PosPage> {
     final subtotal = items.fold<double>(0, (s, i) => s + i.lineTotal);
 
     final invoice = await billing.createInvoice(
-      customerId: customer.id,
-      customerName: customer.fullName,
+      customerId: customer?.id ?? 'walk-in',
+      customerName: customer?.fullName ?? 'Walk-in Customer',
       branch: _branch,
       staffName: staffName,
       items: items,
@@ -1044,12 +1064,24 @@ class _PosPageState extends State<PosPage> {
     );
 
     if (isPackage && _baseAmount > 0) {
+      // The invoice's discount and payingNow cover the whole cart (package +
+      // any aftercare products), but the package record must only track its
+      // own price/paid share — otherwise a discount shows up as a phantom
+      // remaining balance, and paying for aftercare on top can push the
+      // package's paidAmount above its totalPrice (a negative balance).
+      final packageDiscountShare =
+          subtotal > 0 ? (subtotal * discountPct / 100) * (_baseAmount / subtotal) : 0.0;
+      final packageTotal = (_baseAmount - packageDiscountShare).clamp(0, double.infinity).toDouble();
+      final packagePaid = payingNow.clamp(0, packageTotal).toDouble();
+
+      // A package always ties to a real client — enforced by the check in
+      // _complete before this is ever reached, so customer can't be null here.
       await staff.createPackage(
-        customerId: customer.id,
+        customerId: customer!.id,
         packageName: _saleName,
         totalSessions: _sessions,
-        totalPrice: _baseAmount,
-        paidAmount: payingNow,
+        totalPrice: packageTotal,
+        paidAmount: packagePaid,
         branch: _branch,
         sessionDates: _sessionDates,
         defaultTime: kTimeSlots.first,
@@ -1116,7 +1148,9 @@ class _PosPageState extends State<PosPage> {
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text('${customer.fullName} — $_saleName'),
+            Text(_baseAmount > 0
+                ? '${customer?.fullName ?? 'Walk-in Customer'} — $_saleName'
+                : customer?.fullName ?? 'Walk-in Customer'),
             if (_appointmentDate != null)
               Text(
                   'Appointment ${Formatters.date(_appointmentDate!)} · '

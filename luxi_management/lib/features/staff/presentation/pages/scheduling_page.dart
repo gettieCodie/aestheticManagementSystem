@@ -16,6 +16,7 @@ import '../../../admin/state/admin_store.dart';
 import '../../../auth/state/auth_controller.dart';
 import '../../models/appointment.dart';
 import '../../models/customer.dart';
+import '../../services/appointments_repository.dart';
 import '../../state/staff_store.dart';
 
 /// Clinic time slots (9:00 AM – 4:00 PM, every 30 min).
@@ -26,6 +27,14 @@ const List<String> kTimeSlots = [
 ];
 
 const int kBranchCapacity = 1; // one active booking fully occupies a slot
+
+/// Combines a calendar day with a "9:00 AM"-style slot into one DateTime, so
+/// a picked date/time can be checked against "now" before booking.
+DateTime _combineDateAndSlot(DateTime day, String time12) {
+  final time24 = AppointmentsRepository.to24Hour(time12).split(':');
+  return DateTime(
+      day.year, day.month, day.day, int.parse(time24[0]), int.parse(time24[1]));
+}
 
 enum _View { daily, followUp }
 
@@ -1266,6 +1275,7 @@ class _TreatmentRecordDialogState extends State<_TreatmentRecordDialog> {
     final staffName =
         context.read<AuthController>().currentUser?.fullName ?? 'Staff';
     final store = context.read<StaffStore>();
+    final admin = context.read<AdminStore>();
     final navigator = Navigator.of(context);
     final messenger = ScaffoldMessenger.of(context);
     final navController = context.read<NavController>();
@@ -1279,6 +1289,7 @@ class _TreatmentRecordDialogState extends State<_TreatmentRecordDialog> {
       progressPhotos: _consent ? _photoUrls : [],
       isSensitive: _sensitive,
       staffName: staffName,
+      admin: admin,
     );
 
     if (_isPackage) {
@@ -1514,6 +1525,11 @@ class _RescheduleDialogState extends State<_RescheduleDialog> {
             final store = context.read<StaffStore>();
             final navigator = Navigator.of(context);
             final messenger = ScaffoldMessenger.of(context);
+            if (_combineDateAndSlot(_date, _time).isBefore(DateTime.now())) {
+              AppToast.errorOn(
+                  messenger, 'Pick a date and time that hasn\'t passed yet.');
+              return;
+            }
             final ok = await store.reschedule(
                 a.id, _date, _time, capacity: kBranchCapacity);
             if (!ok) {
@@ -1634,6 +1650,11 @@ class _NewAppointmentDialogState extends State<_NewAppointmentDialog> {
     }
     final store = context.read<StaffStore>();
     final day = DateTime(_date.year, _date.month, _date.day);
+
+    if (_combineDateAndSlot(day, _time).isBefore(DateTime.now())) {
+      AppToast.error(context, 'Pick a date and time that hasn\'t passed yet.');
+      return;
+    }
 
     if (store.concurrentCount(_branch, day, _time) >= kBranchCapacity) {
       showDialog<void>(

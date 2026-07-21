@@ -3,6 +3,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import '../../../core/firestore/branch_lookup.dart';
 import '../../../core/firestore/firestore_dates.dart';
 import '../../../core/firestore/sequential_id.dart';
+import '../../../core/utils/formatters.dart';
 import '../models/invoice.dart';
 
 /// Firestore-backed source of truth for `sales` (-> [Invoice]) and
@@ -208,12 +209,16 @@ class BillingRepository {
       final snap = await tx.get(saleRef);
       final data = snap.data();
       if (data == null) return;
+      // A voided sale isn't owed anything — without this, a payment could be
+      // collected against it that `BillingStore.totalCollected` never counts
+      // (it excludes voided invoices), so the cash would be unaccounted for.
+      if (data['voided'] as bool? ?? false) return;
       final total = (data['total'] as num?)?.toDouble() ?? 0;
       final paidSoFar = (data['paidAmount'] as num?)?.toDouble() ?? 0;
-      final balance = (total - paidSoFar).clamp(0, double.infinity);
+      final balance = Formatters.roundMoney((total - paidSoFar).clamp(0, double.infinity));
       applied = amount.clamp(0, balance).toDouble();
       if (applied <= 0) return;
-      final newPaid = paidSoFar + applied;
+      final newPaid = Formatters.roundMoney(paidSoFar + applied);
 
       tx.set(paymentRef, {
         'invoiceId': invoiceId,
@@ -226,9 +231,12 @@ class BillingRepository {
         'changeGiven': ?changeGiven,
         'createdAt': Timestamp.fromDate(date),
       });
+      // Rounded to the nearest centavo so dividing a package price across
+      // sessions (or any other fractional split) can't leave a sub-centavo
+      // residue that keeps a fully-paid invoice sitting open forever.
       tx.update(saleRef, {
         'paidAmount': newPaid,
-        'balance': (total - newPaid).clamp(0, double.infinity),
+        'balance': Formatters.roundMoney((total - newPaid).clamp(0, double.infinity)),
         'paymentStatus': newPaid >= total ? 'fullyPaid' : 'installment',
       });
     });
@@ -248,6 +256,12 @@ class BillingRepository {
     );
   }
 
+  /// Marks the sale void so it drops out of revenue/collected totals and can
+  /// no longer take payments (see [recordPayment]'s voided check). Not
+  /// currently exposed anywhere in the UI. Deliberately does NOT reverse any
+  /// stock deducted, package created, or payments already recorded against
+  /// this sale — wiring this up to an actual "void sale" action needs that
+  /// reversal built first, or those side effects will be left stranded.
   Future<void> voidInvoice(String invoiceId) {
     return _db.collection('sales').doc(invoiceId).update({'voided': true});
   }

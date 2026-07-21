@@ -3,10 +3,23 @@ import 'dart:async';
 import 'package:flutter/foundation.dart';
 
 import '../../../core/firestore/store_errors.dart';
+import '../../admin/models/product.dart';
+import '../../admin/state/admin_store.dart';
 import '../models/appointment.dart';
 import '../models/customer.dart';
 import '../services/appointments_repository.dart';
 import '../services/customers_repository.dart';
+
+/// One active booking fully occupies a branch/date/time slot — must match
+/// `kBranchCapacity` in scheduling_page.dart, the other place this rule is
+/// enforced.
+const int _kSlotCapacity = 1;
+
+/// Two bookings within this many minutes of each other are treated as the
+/// same slot — must match [kTimeSlots]'s 30-minute spacing in
+/// scheduling_page.dart, so an off-grid time (e.g. from the client-facing
+/// booking app) still collides with the slot it actually overlaps.
+const int _kSlotWindowMinutes = 30;
 
 /// A client with an incomplete package (drives the Follow-Up Required list).
 class FollowUpItem {
@@ -236,17 +249,33 @@ class StaffStore extends ChangeNotifier with FirestoreErrorTracker {
     return null;
   }
 
-  /// Count of active appointments in one branch/date/time (conflict detection).
+  /// Count of active appointments in one branch/date/time (conflict
+  /// detection). Matches on overlapping time windows, not exact string
+  /// equality — a booking at an off-grid time (e.g. from the client-facing
+  /// app) still collides with the slot(s) it actually overlaps.
   int concurrentCount(String branch, DateTime date, String time, {String? excludeId}) {
     final day = DateTime(date.year, date.month, date.day);
+    final minutes = AppointmentsRepository.minutesOfDay(time);
     return _appointments
         .where((a) =>
             a.id != excludeId &&
             a.branch == branch &&
             a.date == day &&
-            a.time == time &&
-            a.isOpen)
+            a.isOpen &&
+            (AppointmentsRepository.minutesOfDay(a.time) - minutes).abs() <
+                _kSlotWindowMinutes)
         .length;
+  }
+
+  /// The first date on/after [start] where [branch]/[time] isn't already at
+  /// capacity — so auto-scheduled package sessions never silently stack past
+  /// the same one-booking-per-slot rule manual booking enforces.
+  DateTime _nextOpenSlot(String branch, DateTime start, String time) {
+    var date = start;
+    while (concurrentCount(branch, date, time) >= _kSlotCapacity) {
+      date = date.add(const Duration(days: 1));
+    }
+    return date;
   }
 
   /// Books a new appointment (walk-in or staff-scheduled) directly into
@@ -287,8 +316,44 @@ class StaffStore extends ChangeNotifier with FirestoreErrorTracker {
 
   Future<void> logContact(String id) => _appointmentsRepo.logContact(id);
 
-  Future<void> cancel(String id, String reason) =>
-      _appointmentsRepo.cancel(id, reason);
+  /// Cancels an appointment. If it was a package session with no other
+  /// booking for that session number, a replacement is created immediately —
+  /// otherwise the package could never reach that session again (a
+  /// replacement is normally only auto-created when the *prior* session is
+  /// completed), permanently stranding it.
+  Future<void> cancel(String id, String reason) async {
+    final a = _byId(id);
+    await _appointmentsRepo.cancel(id, reason);
+
+    if (a != null && a.packageId != null && a.sessionNumber != null) {
+      final customer = customerById(a.customerId);
+      final pkg = customer == null ? null : _packageOf(customer, a.packageId!);
+      if (pkg != null && pkg.completedSessions < pkg.totalSessions) {
+        final stillBooked = _appointments.any((o) =>
+            o.id != id &&
+            o.packageId == pkg.id &&
+            o.sessionNumber == a.sessionNumber &&
+            o.status != AppointmentStatus.cancelled);
+        if (!stillBooked) {
+          final rebookFrom = a.date.isBefore(DateTime.now()) ? DateTime.now() : a.date;
+          final date = _nextOpenSlot(a.branch, rebookFrom, a.time);
+          await _appointmentsRepo.createAppointment(
+            customerName: a.customerName,
+            customerId: a.customerId,
+            phone: a.phone,
+            serviceName: a.serviceName,
+            branchShortName: a.branch,
+            date: date,
+            time12h: a.time,
+            status: AppointmentStatus.pending,
+            packageId: pkg.id,
+            packageName: pkg.name,
+            sessionNumber: a.sessionNumber,
+          );
+        }
+      }
+    }
+  }
 
   /// Returns false if the new slot is at branch capacity (conflict) — in
   /// that case nothing is written.
@@ -316,9 +381,16 @@ class StaffStore extends ChangeNotifier with FirestoreErrorTracker {
 
   /// Completes an appointment: saves the treatment record to Firestore
   /// (which also drives [Customer.sessions] once the stream updates),
-  /// advances the package's completed-session count in Firestore, and
-  /// auto-proposes the next session if any remain. Returns the auto-created
-  /// next appointment, if any.
+  /// deducts any products used from that branch's stock, advances the
+  /// package's completed-session count, and auto-proposes the next session
+  /// if any remain (unless one's already booked — [createPackage]
+  /// pre-schedules every session up front). Returns the next appointment for
+  /// this package, if any. [admin] drives the stock deduction; pass it even
+  /// when no products were used, since it costs nothing to skip.
+  ///
+  /// Calling this twice on the same [id] is a no-op the second time — without
+  /// that guard, a double-tap would double-deduct stock and double-advance
+  /// the package's session count.
   Future<Appointment?> complete(
     String id, {
     required List<String> productsUsed,
@@ -326,9 +398,10 @@ class StaffStore extends ChangeNotifier with FirestoreErrorTracker {
     required List<String> progressPhotos,
     required bool isSensitive,
     required String staffName,
+    required AdminStore admin,
   }) async {
     final a = _byId(id);
-    if (a == null) return null;
+    if (a == null || a.status == AppointmentStatus.completed) return null;
 
     await _appointmentsRepo.complete(
       id,
@@ -339,45 +412,83 @@ class StaffStore extends ChangeNotifier with FirestoreErrorTracker {
       staffName: staffName,
     );
 
+    // Mirrors the POS deduction: a product actually used in treatment leaves
+    // the shelf exactly the same as one sold at the counter, so it needs the
+    // same stock + ledger entry or inventory silently drifts from usage.
+    for (final name in productsUsed) {
+      Product? product;
+      for (final p in admin.products) {
+        if (p.name == name) {
+          product = p;
+          break;
+        }
+      }
+      if (product == null) continue;
+      await admin.adjustStock(
+        product: product,
+        branch: a.branch,
+        delta: -1,
+        reason: 'Used in treatment',
+        staffName: staffName,
+        remarks: 'Appointment ${a.id}',
+      );
+    }
+
     final customer = customerById(a.customerId);
     Appointment? next;
     if (customer != null && a.packageId != null) {
       final pkg = _packageOf(customer, a.packageId!);
-      if (pkg != null) {
+      if (pkg != null && pkg.completedSessions < pkg.totalSessions) {
         await _customersRepo.incrementPackageCompletedSessions(pkg.id);
-        final completedNow =
-            pkg.completedSessions < pkg.totalSessions ? pkg.completedSessions + 1 : pkg.completedSessions;
+        final completedNow = pkg.completedSessions + 1;
         final sessionsLeft = pkg.totalSessions - completedNow;
+        final nextSessionNumber = completedNow + 1;
 
         if (sessionsLeft > 0) {
-          final nextDate = a.date.add(Duration(days: pkg.sessionIntervalDays));
-          final nextSessionNumber = completedNow + 1;
-          final nextId = await _appointmentsRepo.createAppointment(
-            customerName: customer.fullName,
-            customerId: customer.id,
-            phone: customer.phone,
-            serviceName: a.serviceName,
-            branchShortName: a.branch,
-            date: nextDate,
-            time12h: a.time,
-            status: AppointmentStatus.pending,
-            packageId: pkg.id,
-            packageName: pkg.name,
-            sessionNumber: nextSessionNumber,
-          );
-          next = Appointment(
-            id: nextId,
-            customerId: customer.id,
-            customerName: customer.fullName,
-            serviceName: a.serviceName,
-            branch: a.branch,
-            date: nextDate,
-            time: a.time,
-            status: AppointmentStatus.pending,
-            packageId: pkg.id,
-            packageName: pkg.name,
-            sessionNumber: nextSessionNumber,
-          );
+          // createPackage already books every session up front, so the next
+          // one usually already exists — only create it if it's missing.
+          for (final other in _appointments) {
+            if (other.packageId == pkg.id &&
+                other.sessionNumber == nextSessionNumber &&
+                other.status != AppointmentStatus.cancelled) {
+              next = other;
+              break;
+            }
+          }
+
+          if (next == null) {
+            final nextDate = _nextOpenSlot(
+              a.branch,
+              a.date.add(Duration(days: pkg.sessionIntervalDays)),
+              a.time,
+            );
+            final nextId = await _appointmentsRepo.createAppointment(
+              customerName: customer.fullName,
+              customerId: customer.id,
+              phone: customer.phone,
+              serviceName: a.serviceName,
+              branchShortName: a.branch,
+              date: nextDate,
+              time12h: a.time,
+              status: AppointmentStatus.pending,
+              packageId: pkg.id,
+              packageName: pkg.name,
+              sessionNumber: nextSessionNumber,
+            );
+            next = Appointment(
+              id: nextId,
+              customerId: customer.id,
+              customerName: customer.fullName,
+              serviceName: a.serviceName,
+              branch: a.branch,
+              date: nextDate,
+              time: a.time,
+              status: AppointmentStatus.pending,
+              packageId: pkg.id,
+              packageName: pkg.name,
+              sessionNumber: nextSessionNumber,
+            );
+          }
         }
       }
     }
@@ -445,13 +556,17 @@ class StaffStore extends ChangeNotifier with FirestoreErrorTracker {
     );
 
     for (int i = 0; i < sessionDates.length; i++) {
+      // Every session defaults to the same time slot, so back-to-back
+      // package sales would otherwise stack multiple sessions into a slot
+      // the rest of the app treats as capacity-1.
+      final date = _nextOpenSlot(branch, sessionDates[i], defaultTime);
       await _appointmentsRepo.createAppointment(
         customerName: customer.fullName,
         customerId: customer.id,
         phone: customer.phone,
         serviceName: packageName,
         branchShortName: branch,
-        date: sessionDates[i],
+        date: date,
         time12h: defaultTime,
         status: AppointmentStatus.confirmed,
         packageId: pkg.id,
@@ -460,4 +575,13 @@ class StaffStore extends ChangeNotifier with FirestoreErrorTracker {
       );
     }
   }
+
+  /// Call after recording a payment against an invoice, so a package paid in
+  /// installments doesn't permanently show its original (first-payment-only)
+  /// balance in Firestore. A no-op if [invoiceId] doesn't bill a package.
+  Future<void> applyPackagePayment({
+    required String invoiceId,
+    required double amount,
+  }) =>
+      _customersRepo.applyPackagePayment(invoiceId: invoiceId, amount: amount);
 }

@@ -16,6 +16,12 @@ abstract final class Formatters {
     return '$hour:${d.minute.toString().padLeft(2, '0')} $period';
   }
 
+  /// Rounds to the nearest centavo — guards against floating-point division
+  /// (e.g. splitting a package price across sessions) leaving a sub-centavo
+  /// residue that displays as ₱0 but is technically still `> 0`, which would
+  /// otherwise leave a fully-paid invoice permanently "open."
+  static double roundMoney(double amount) => (amount * 100).round() / 100;
+
   /// e.g. "₱17,500", or "−₱500" for negatives.
   static String peso(num amount) {
     final rounded = amount.round();

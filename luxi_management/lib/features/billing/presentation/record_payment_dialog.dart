@@ -4,6 +4,7 @@ import 'package:provider/provider.dart';
 
 import '../../../core/utils/formatters.dart';
 import '../../auth/state/auth_controller.dart';
+import '../../staff/state/staff_store.dart';
 import '../models/invoice.dart';
 import '../state/billing_store.dart';
 import '../../../core/widgets/app_toast.dart';
@@ -67,8 +68,9 @@ class _RecordPaymentDialogState extends State<RecordPaymentDialog> {
     final navigator = Navigator.of(context);
     final messenger = ScaffoldMessenger.of(context);
     setState(() => _submitting = true);
+    final staffStore = context.read<StaffStore>();
     try {
-      await context.read<BillingStore>().recordPayment(
+      final recorded = await context.read<BillingStore>().recordPayment(
             invoiceId: invoice.id,
             amount: amount,
             method: _method,
@@ -78,6 +80,12 @@ class _RecordPaymentDialogState extends State<RecordPaymentDialog> {
             amountReceived: _method.isCash ? _receivedValue : null,
             changeGiven: _method.isCash ? _change : null,
           );
+      // Keeps an installment package's stored balance current — otherwise it
+      // permanently shows only the amount paid at the original sale.
+      if (recorded != null) {
+        await staffStore.applyPackagePayment(
+            invoiceId: invoice.id, amount: recorded.amount);
+      }
       navigator.pop();
     } catch (e) {
       setState(() => _submitting = false);

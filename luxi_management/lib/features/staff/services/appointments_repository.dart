@@ -257,4 +257,13 @@ class AppointmentsRepository {
     if (hour12 == 0) hour12 = 12;
     return '$hour12:$minute $period';
   }
+
+  /// `9:15 AM` -> `555` (minutes since midnight). Used for capacity checks
+  /// that must catch a slot conflict even when the booking's time didn't
+  /// come from [kTimeSlots] — e.g. a client-app booking at an off-grid time.
+  static int minutesOfDay(String time12) {
+    final time24 = to24Hour(time12);
+    final hm = time24.split(':');
+    return int.parse(hm[0]) * 60 + int.parse(hm[1]);
+  }
 }

@@ -421,7 +421,9 @@ class _ClientCard extends StatelessWidget {
                             context,
                             c.lastVisit != null
                                 ? 'Last visit ${Formatters.date(c.lastVisit!)}'
-                                : 'No visits yet',
+                                : c.packages.isNotEmpty
+                                    ? 'Awaiting first session'
+                                    : 'No visits yet',
                             scheme.onSurfaceVariant),
                       ]),
                     ],
@@ -767,25 +769,88 @@ class _PackageCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
+
+    return InkWell(
+      borderRadius: BorderRadius.circular(12),
+      onTap: () => showModalBottomSheet<void>(
+        context: context,
+        isScrollControlled: true,
+        showDragHandle: true,
+        builder: (_) => _PackageDetailSheet(package: package, invoice: invoice),
+      ),
+      child: Container(
+        margin: const EdgeInsets.only(bottom: 12),
+        padding: const EdgeInsets.all(16),
+        decoration: BoxDecoration(
+          color: scheme.surfaceContainerHighest.withValues(alpha: 0.35),
+          borderRadius: BorderRadius.circular(12),
+        ),
+        child: Row(
+          children: [
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(package.name,
+                      style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 15)),
+                  const SizedBox(height: 4),
+                  Text('${package.completedSessions} of ${package.totalSessions} sessions completed',
+                      style: TextStyle(fontSize: 12, color: scheme.onSurfaceVariant)),
+                  const SizedBox(height: 10),
+                  ClipRRect(
+                    borderRadius: BorderRadius.circular(8),
+                    child: LinearProgressIndicator(
+                      value: package.progress,
+                      minHeight: 6,
+                      backgroundColor: scheme.surfaceContainerHighest,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(width: 12),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+              decoration: BoxDecoration(
+                color: scheme.primary.withValues(alpha: 0.14),
+                borderRadius: BorderRadius.circular(20),
+              ),
+              child: Text('${package.sessionsLeft} left',
+                  style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: scheme.primary)),
+            ),
+            const SizedBox(width: 6),
+            Icon(Icons.chevron_right_rounded, color: scheme.onSurfaceVariant),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+/// Full payment breakdown for a package, opened from its preview row.
+class _PackageDetailSheet extends StatelessWidget {
+  const _PackageDetailSheet({required this.package, this.invoice});
+  final TreatmentPackage package;
+  final Invoice? invoice;
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
     final total = invoice?.total ?? package.totalPrice;
     final paid = invoice?.amountPaid ?? package.paidAmount;
     final balance = invoice?.balance ?? package.balance;
 
-    return Container(
-      margin: const EdgeInsets.only(bottom: 12),
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: scheme.surfaceContainerHighest.withValues(alpha: 0.35),
-        borderRadius: BorderRadius.circular(12),
-      ),
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(20, 0, 20, 24),
       child: Column(
+        mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Row(
             children: [
               Expanded(
                 child: Text(package.name,
-                    style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 15)),
+                    style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 18)),
               ),
               Container(
                 padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
@@ -810,7 +875,7 @@ class _PackageCard extends StatelessWidget {
               backgroundColor: scheme.surfaceContainerHighest,
             ),
           ),
-          const SizedBox(height: 14),
+          const SizedBox(height: 18),
           _payRow(context, 'Total Package', total, bold: true),
           _payRow(context, 'Paid', paid, color: scheme.primary),
           _payRow(context, 'Remaining Balance', balance, color: scheme.error, bold: true),
@@ -822,7 +887,7 @@ class _PackageCard extends StatelessWidget {
   Widget _payRow(BuildContext context, String label, double amount,
       {Color? color, bool bold = false}) {
     return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 2),
+      padding: const EdgeInsets.symmetric(vertical: 4),
       child: Row(
         mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
@@ -842,42 +907,86 @@ class _SessionTile extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
-    return Container(
-      margin: const EdgeInsets.only(bottom: 12),
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: scheme.outlineVariant.withValues(alpha: 0.7)),
+    return InkWell(
+      borderRadius: BorderRadius.circular(12),
+      onTap: () => showModalBottomSheet<void>(
+        context: context,
+        isScrollControlled: true,
+        showDragHandle: true,
+        builder: (_) => _SessionDetailSheet(session: session),
       ),
+      child: Container(
+        margin: const EdgeInsets.only(bottom: 12),
+        padding: const EdgeInsets.all(16),
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(color: scheme.outlineVariant.withValues(alpha: 0.7)),
+        ),
+        child: Row(
+          children: [
+            Icon(Icons.check_circle_rounded, size: 18, color: scheme.primary),
+            const SizedBox(width: 8),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text('${session.serviceName} — Session ${session.sessionNumber}',
+                      style: const TextStyle(fontWeight: FontWeight.w700)),
+                  const SizedBox(height: 2),
+                  Text(Formatters.date(session.date),
+                      style: TextStyle(fontSize: 12, color: scheme.onSurfaceVariant)),
+                ],
+              ),
+            ),
+            if (session.photoCount > 0)
+              Icon(Icons.lock_outline, size: 16, color: scheme.primary),
+            const SizedBox(width: 6),
+            Icon(Icons.chevron_right_rounded, color: scheme.onSurfaceVariant),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+/// Session notes, products used, and photo access — opened from its preview row.
+class _SessionDetailSheet extends StatelessWidget {
+  const _SessionDetailSheet({required this.session});
+  final SessionRecord session;
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(20, 0, 20, 24),
       child: Column(
+        mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Row(
             children: [
-              Icon(Icons.check_circle_rounded, size: 18, color: scheme.primary),
+              Icon(Icons.check_circle_rounded, size: 20, color: scheme.primary),
               const SizedBox(width: 8),
               Expanded(
                 child: Text('${session.serviceName} — Session ${session.sessionNumber}',
-                    style: const TextStyle(fontWeight: FontWeight.w700)),
+                    style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 16)),
               ),
-              Text('by ${session.staffName}',
-                  style: TextStyle(fontSize: 12, color: scheme.primary)),
             ],
           ),
-          const SizedBox(height: 2),
-          Text(Formatters.date(session.date),
+          const SizedBox(height: 4),
+          Text('${Formatters.date(session.date)} · by ${session.staffName}',
               style: TextStyle(fontSize: 12, color: scheme.onSurfaceVariant)),
           if (session.productsUsed.isNotEmpty) ...[
-            const SizedBox(height: 10),
+            const SizedBox(height: 14),
             _label(context, 'Products Used'),
             Text(session.productsUsed.join(', ')),
           ],
           if (session.notes.isNotEmpty) ...[
-            const SizedBox(height: 10),
+            const SizedBox(height: 14),
             _label(context, 'Notes'),
             Text(session.notes),
           ],
-          const SizedBox(height: 12),
+          const SizedBox(height: 16),
           if (session.photoCount > 0)
             InkWell(
               borderRadius: BorderRadius.circular(10),

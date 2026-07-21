@@ -21,8 +21,34 @@ class AuthController extends ChangeNotifier with FirestoreErrorTracker {
     _usersSub = _usersRepo.watchUsers().listen((list) {
       clearStreamError('users');
       _users = list;
+      _reconcileCurrentUser();
       notifyListeners();
     }, onError: (Object e) => reportStreamError('users', e));
+  }
+
+  /// Keeps the signed-in session honest against the live `users` list —
+  /// without this, deactivating (or deleting, or re-scoping the role/branch
+  /// of) an account someone is currently signed in as had no effect until
+  /// they voluntarily logged out, so the old permissions kept working.
+  void _reconcileCurrentUser() {
+    final current = _currentUser;
+    if (current == null) return;
+    // Built-in demo accounts aren't Firestore-backed — nothing to reconcile.
+    if (_credentials.any((c) => c.id == current.id)) return;
+
+    for (final u in _users) {
+      if (u.id == current.id) {
+        if (!u.isActive) {
+          _currentUser = null;
+          _error = 'This account has been deactivated.';
+        } else {
+          _currentUser = u;
+        }
+        return;
+      }
+    }
+    // The account no longer exists in the live list at all.
+    _currentUser = null;
   }
 
   final UsersRepository _usersRepo;

@@ -202,4 +202,41 @@ class CustomersRepository {
       'updatedAt': FieldValue.serverTimestamp(),
     });
   }
+
+  /// Mirrors a payment collected against [invoiceId] onto the package that
+  /// invoice bills, if any. Without this, `createPackage` writes the
+  /// package's paidAmount/remainingBalance/paymentStatus once at sale time
+  /// and nothing ever updates them again — a fully-paid installment package
+  /// would permanently report its original balance and `'installment'`
+  /// status in Firestore (this app's own UI masks it by preferring the
+  /// invoice's live figures, but any report or the sibling app reading
+  /// `packages` directly would see stale numbers).
+  Future<void> applyPackagePayment({
+    required String invoiceId,
+    required double amount,
+  }) async {
+    if (amount <= 0) return;
+    final query = await _db
+        .collection('packages')
+        .where('invoiceId', isEqualTo: invoiceId)
+        .limit(1)
+        .get();
+    if (query.docs.isEmpty) return;
+    final doc = query.docs.first;
+
+    await _db.runTransaction((tx) async {
+      final snap = await tx.get(doc.reference);
+      final data = snap.data();
+      if (data == null) return;
+      final totalPrice = (data['totalPrice'] as num?)?.toDouble() ?? 0;
+      final paidSoFar = (data['paidAmount'] as num?)?.toDouble() ?? 0;
+      final newPaid = (paidSoFar + amount).clamp(0, totalPrice).toDouble();
+      tx.update(doc.reference, {
+        'paidAmount': newPaid,
+        'remainingBalance': (totalPrice - newPaid).clamp(0, double.infinity),
+        'paymentStatus': newPaid >= totalPrice ? 'fullyPaid' : 'installment',
+        'updatedAt': FieldValue.serverTimestamp(),
+      });
+    });
+  }
 }

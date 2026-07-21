@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../../core/theme/app_colors.dart';
+import '../../../core/utils/formatters.dart';
 
 enum PaymentMethod {
   cash('Cash', Icons.payments_rounded),
@@ -109,7 +110,8 @@ class Invoice {
 
   double get subtotal => items.fold(0, (sum, i) => sum + i.lineTotal);
   double get total => (subtotal - discount).clamp(0, double.infinity);
-  double get balance => (total - amountPaid).clamp(0, double.infinity);
+  double get balance =>
+      Formatters.roundMoney((total - amountPaid).clamp(0, double.infinity));
 
   InvoiceStatus get status {
     if (voided) return InvoiceStatus.voided;
